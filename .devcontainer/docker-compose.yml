@@ -1,0 +1,59 @@
+version: '3.8'
+
+services:
+  app:
+    image: mcr.microsoft.com/devcontainers/javascript-node:1-18-buster
+    volumes:
+      - ..:/workspace:cached
+    ports:
+      - 9422:9422
+      - 5445:5445
+    command: sleep infinity
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+  
+  redis:
+    image: redis:latest
+    ports:
+      - 6379:6379
+    command: bash -c 'redis-server --requirepass "$$(cat /run/secrets/redis_pass)"'
+    secrets:
+      - source: redis_pass
+        target: /run/secrets/redis_pass
+    networks:
+      default:
+        aliases:
+          - rxfunction-gw-redis
+
+  db:
+    build:
+      context: "./testdb"
+      dockerfile: "Dockerfile_testDB"
+    volumes:
+    - "./data:/data/db"
+    healthcheck:
+      test: ["CMD", "/mongo_healthcheck.sh"]
+      interval: 10s
+      timeout: 30s
+      retries: 300
+      start_period: 30s
+  
+  poller:
+    image: curlimages/curl:latest
+    command: >
+      sh -c '
+        while true; do
+          echo "Polling https://localhost:5445/api/processDirtySystems";
+          curl -k -H "authorization: 123" https://app:5445/api/processDirtySystems;
+          sleep 10;
+        done
+      '
+    depends_on:
+      - app
+
+secrets:
+  redis_pass:
+    file: ./dev_redis_pass.txt

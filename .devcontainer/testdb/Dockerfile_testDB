@@ -1,0 +1,15 @@
+FROM mongo
+ENV MONGO_INITDB_DATABASE=Walkasin
+ENV MONGO_INITDB_ROOT_USERNAME=rxfunctiongateway
+ENV MONGO_INITDB_ROOT_PASSWORD=testdbpass
+COPY ./a_init_basic.js /docker-entrypoint-initdb.d/a_init_basic.js
+COPY ./b_init_users.js /docker-entrypoint-initdb.d/b_init_users.js
+COPY ./c_init_firmware.js /docker-entrypoint-initdb.d/c_init_firmware.js
+COPY ./d_init_groups.js /docker-entrypoint-initdb.d/d_init_groups.js
+COPY ./e_init_fleets.js /docker-entrypoint-initdb.d/e_init_fleets.js
+COPY ./f_init_systems.js /docker-entrypoint-initdb.d/f_init_systems.js
+COPY ./g_init_devices.js /docker-entrypoint-initdb.d/g_init_devices.js
+COPY ./h_init_device_logs.js /docker-entrypoint-initdb.d/h_init_device_logs.js
+COPY ./z_init_complete.js /docker-entrypoint-initdb.d/z_init_complete.js
+COPY ./mongo_healthcheck.sh /mongo_healthcheck.sh
+RUN chmod +x /mongo_healthcheck.sh

@@ -1,0 +1,9 @@
+# .gitignore
+server/node_modules/*
+Angular/node_modules/*
+Angular/.vscode/*
+Angular/.angular/*
+db/creds.txt
+*.env
+node_modules
+.devcontainer/data/

@@ -1,0 +1,14 @@
+{
+	"name": "RxFunctionGatewayServer",
+	"dockerComposeFile": "docker-compose.yml",
+	"service": "app",
+	"workspaceFolder": "/workspace",
+	"customizations": {
+			"vscode": {
+					"extensions": [
+							"mongodb.mongodb-vscode",
+							"orta.vscode-jest"
+					]
+			}
+	}
+}
