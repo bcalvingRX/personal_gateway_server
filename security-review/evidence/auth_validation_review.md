@@ -1,179 +1,62 @@
 # Authorization and Validation Review
-Repository: walkasins-gateway-server
 
 ## Scope
 - `middleware/authtoken.middleware.js`
 - `middleware/input.middleware.js`
 - `controllers/authentication.controller.js`
 - `services/user.service.js`
+- `apps/manager-app.js`
 
-## Confirmed Authorization Design
-
+## Confirmed authorization design
 ### Manager routes
-Manager routes use `auth.verify(location, permission)` from `middleware/authtoken.middleware.js`.
-
-Observed behavior:
-- reads identity from `res.locals.data?.useremail`
-- in development mode, falls back to `test.admin1@rxfunction.com`
-- calls `userService.createUser(email)` before permission evaluation
-- loads permissions with `userService.getUserPermissions(email, false)`
-- grants access when a matching `(location, permission)` pair exists
+- use `middleware/input.middleware.js:reqCookie()`
+- then use `middleware/authtoken.middleware.js:verify(location, permission)`
+- `verify()`:
+  - reads `res.locals.data.useremail`
+  - auto-creates missing user records with `userService.createUser(email)`
+  - loads permissions with `userService.getUserPermissions(email, false)`
+  - grants access on exact `(location, permission)` match
 
 ### API routes
-API-style routes use `verifyAPIKey(req, res, next)`.
+- use `reqRegToken()` plus `verifyAPIKey()`
+- `verifyAPIKey()` hashes the presented key with MD5 and checks the `APIKeys` collection
 
-Observed behavior:
-- reads API key from `res.locals.data.authorization`
-- hashes key with MD5 in `user.service.js`
-- checks existence in `APIKey` collection
+### Instrument/device TLS check
+- `verifyInstrument()` exists but was not observed on reviewed route definitions
 
-### Instrument/device path
-`verifyInstrument(req, res, next)` checks TLS socket state:
-- `requestCert === true`
-- `rejectUnauthorized === true`
-- one CA configured
-- `req.socket.authorized === true`
+## Confirmed validation design
+### HTTP validation
+- `valInput()` uses `matchedData(req)` and writes validated values to `res.locals.data`
+- manager and API routes then consume `res.locals.data` rather than raw request objects in the reviewed paths
 
-This is a separate trust boundary from browser/session-based auth.
+### Manager-route identity inputs
+- `reqCookie()` requires:
+  - `header("useremail")`
+  - `cookie("sessID")`
+- in development mode, `injectMockUser()` inserts a test header value
 
----
+### API validation
+- `reqRegToken()` requires `authorization` header presence and non-empty string content
 
-## Confirmed Validation Design
+## Confirmed authentication/identity flow observations
+- `controllers/authentication.controller.js:getLoginInfo()` returns `res.locals.user` and permissions obtained from `userService.getUserPermissions(res.locals.user, true)`
+- manager authorization in reviewed backend code is driven by validated request data and permission lookup, not by a direct session lookup in the auth middleware itself
 
-### Centralized validation
-`middleware/input.middleware.js` uses `express-validator`.
+## Positive controls present in code
+- centralized HTTP input validation
+- explicit allowlist-style permission checks
+- separate manager and automation auth models
+- Redis-backed permission caching with controller-level invalidation in reviewed mutation paths
+- rate limiting on manager auth/API surfaces
 
-Observed pattern:
-- route-specific validators sanitize and validate inputs
-- `valInput()` writes validated fields to `res.locals.data = matchedData(req)`
-- invalid input returns HTTP 400
+## Confirmed discovery observations
+1. authorization depends on the trustworthiness of `useremail` reaching `res.locals.data`
+2. user records are auto-created during auth-related flows
+3. first-user bootstrap assigns `Admin Group`
+4. API-key-protected automation endpoints bypass the manager user/group model
+5. Redis is part of authorization correctness because permissions may be served from cache
 
-### Session/cookie manager validation
-`reqCookie()` requires:
-- `header("useremail").exists().trim().escape().isString()`
-- `cookie("sessID").exists().notEmpty()`
-
-In development mode:
-- `injectMockUser()` inserts `req.headers.useremail = "test.admin1@rxfunction.com"`
-
-### API key validation
-`reqRegToken()` requires:
-- `authorization` header exists
-- is string
-- not empty
-
----
-
-## Confirmed Authentication/Identity Flow
-
-### `controllers/authentication.controller.js`
-`getLoginInfo(req, res, next)`:
-- reads `req.session.user`
-- creates user with `userService.createUser(userDetails.email)`
-- fetches permissions with `userService.getUserPermissions(userDetails.email, true)`
-- returns:
-  - `name`
-  - `permissions`
-
-This confirms the manager app is using session-backed identity and permission retrieval.
-
----
-
-## Confirmed User/Permission Model
-
-### `services/user.service.js`
-`createUser(user)`:
-- checks whether the user exists
-- if not, creates a user record
-- if this is the first user in the database, assigns `"Admin Group"`
-- otherwise assigns `"Default Group"`
-
-`getUserPermissions(user, updateCache)`:
-- reads cached permissions from Redis when allowed
-- otherwise loads user and populated group from MongoDB
-- caches permissions in Redis
-
-This confirms:
-- user records are auto-provisioned
-- permissions come from group membership
-- Redis is part of the authorization path
-
----
-
-## Positive Controls Present in Code
-
-- explicit permission checks by location + permission
-- centralized input validation with `matchedData(req)`
-- separate auth models for:
-  - session user
-  - API key
-  - instrument TLS
-- Redis-backed permission caching
-- failed validation returns 400
-- failed auth returns 401/403
-
----
-
-## Confirmed Security-Relevant Observations
-
-### 1. Authorization depends on validated `useremail`
-`verify()` reads identity from `res.locals.data.useremail`, not directly from the session.
-
-Implication:
-- protected routes rely on validator/middleware ordering
-- protected routes also rely on the trustworthiness of how `useremail` is established
-
-### 2. User records are auto-created during auth flow
-Both `verify()` and `getLoginInfo()` call `userService.createUser(email)`.
-
-Implication:
-- authenticated identities can trigger account creation as a side effect
-
-### 3. First created user becomes admin
-`createUser()` assigns `"Admin Group"` when `getNumUsers() === 0`.
-
-Implication:
-- initial bootstrap state is security-critical
-- this is code-confirmed and should be reviewed as an administrative trust decision
-
-### 4. API key auth is separate from role-based user auth
-Provisioning/API routes may bypass the manager session/permission model and rely only on API key presence.
-
-Implication:
-- provisioning and backend operational endpoints remain high-priority review targets
-
-### 5. Redis cache is in the authorization path
-Permission data may come from Redis or MongoDB.
-
-Implication:
-- permission consistency and cache invalidation matter for admin/group changes
-
----
-
-## Questions Requiring Deeper Review
-
-These are not findings yet. They need more code tracing or runtime validation.
-
-1. How is `useremail` originally derived for manager routes?
-   - trusted session/auth middleware
-   - proxy/header propagation
-   - client-controlled header
-   This must be confirmed.
-
-2. Is the “first user becomes admin” behavior safe in production bootstrap workflows?
-
-3. Do controllers consistently use `res.locals.data` instead of raw request objects?
-
-4. Are permission-cache invalidation paths present after user/group changes?
-
-5. Are API-key-protected provisioning routes sufficiently constrained for their operational impact?
-
----
-
-## Next Review Targets
-
-1. `controllers/system.controller.js`
-2. `services/system.service.js`
-3. `controllers/fwupdatemanagement.controller.js`
-4. `services/aws.iot.service.js`
-5. `services/redis.service.js`
+## Unknowns for focused review or manual validation
+- how `useremail` is established in deployment
+- whether first-user bootstrap is operationally constrained
+- whether any non-reviewed mutation paths bypass cache invalidation logic

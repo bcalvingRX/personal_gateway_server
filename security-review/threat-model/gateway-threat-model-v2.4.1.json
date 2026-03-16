@@ -1,0 +1,691 @@
+{
+  "version": "2.4.1",
+  "summary": {
+    "title": "RxFunction Gateway Server Threat Model",
+    "owner": "RxFunction Cybersecurity Team",
+    "description": "Baseline threat model for RxFunction Gateway Server using STRIDE framework. Covers authentication paths, device communication, firmware distribution, data flows, and cloud infrastructure. Identifies all threats without assuming controls as a foundation for risk-based remediation prioritization.",
+    "id": 0
+  },
+  "detail": {
+    "contributors": [
+      "Brian Gray - Security Engineering",
+      "Review Team"
+    ],
+    "diagrams": [
+      {
+        "id": 0,
+        "title": "Gateway Server System Overview",
+        "diagramType": "STRIDE",
+        "placeholder": "System-level threat model for Gateway Server showing major trust boundaries and data flows",
+        "thumbnail": "./public/content/images/thumbnail.stride.jpg",
+        "version": "2.4.1",
+        "cells": [
+          {
+            "position": {
+              "x": 50,
+              "y": 100
+            },
+            "size": {
+              "width": 800,
+              "height": 700
+            },
+            "attrs": {
+              "rect": {
+                "fill": "none",
+                "stroke": "blue",
+                "strokeDasharray": "5 5"
+              },
+              "label": {
+                "text": "Cloud Boundary\r\r\n(Network Access Required)",
+                "fill": "blue"
+              }
+            },
+            "visible": true,
+            "shape": "trust-boundary-box",
+            "zIndex": 0,
+            "id": "cloud-boundary",
+            "data": {
+              "type": "tm.BoundaryBox",
+              "name": "AWS Cloud Trust Boundary",
+              "description": "AWS cloud infrastructure boundary. All services run within VPC with security group controls. Device authentication via mTLS using IAR-provisioned certificates. Operator access via MS Entra ID SSO through OAuth2-Proxy.",
+              "hasOpenThreats": false,
+              "outOfScope": null
+            }
+          },
+          {
+            "position": {
+              "x": 100,
+              "y": 200
+            },
+            "size": {
+              "width": 160,
+              "height": 100
+            },
+            "attrs": {
+              "text": {
+                "text": "AWS IoT Core"
+              },
+              "body": {
+                "stroke": "red",
+                "strokeWidth": 2.5,
+                "strokeDasharray": null
+              }
+            },
+            "visible": true,
+            "shape": "process",
+            "zIndex": 1,
+            "id": "iot-core",
+            "data": {
+              "type": "tm.Process",
+              "name": "AWS IoT Core",
+              "description": "MQTT broker with mTLS device authentication. Manages device connections, certificate lifecycle, MQTT topic policies, and IoT Device Shadows for configuration management.",
+              "outOfScope": false,
+              "hasOpenThreats": true,
+              "privilegeLevel": "System",
+              "threats": [
+                {
+                  "id": "threat-001",
+                  "title": "Device Shadow State Poisoning",
+                  "status": "Open",
+                  "severity": "High",
+                  "type": "Tampering",
+                  "description": "Attacker with cloud access could push malicious shadow state updates causing inappropriate therapy configurations on device reconnection.",
+                  "mitigation": "Shadow state validation, version control, rate limiting on updates, audit trail for all changes",
+                  "modelType": "STRIDE",
+                  "new": false,
+                  "number": 1,
+                  "score": 7.1
+                },
+                {
+                  "id": "threat-002",
+                  "title": "MQTT Topic Access Violation",
+                  "status": "Open",
+                  "severity": "High",
+                  "type": "Elevation of Privilege",
+                  "description": "Misconfigured IoT policies could allow access to MQTT topics belonging to other patients, enabling cross-patient data access and command injection.",
+                  "mitigation": "Strict topic naming convention, policy templates, automated validation, least privilege access",
+                  "modelType": "STRIDE",
+                  "new": false,
+                  "number": 2,
+                  "score": 7.1
+                }
+              ]
+            }
+          },
+          {
+            "position": {
+              "x": 350,
+              "y": 200
+            },
+            "size": {
+              "width": 160,
+              "height": 100
+            },
+            "attrs": {
+              "text": {
+                "text": "AWS Lambda\r\r\nFunctions"
+              },
+              "body": {
+                "stroke": "red",
+                "strokeWidth": 2.5,
+                "strokeDasharray": null
+              }
+            },
+            "visible": true,
+            "shape": "process",
+            "zIndex": 1,
+            "id": "lambda",
+            "data": {
+              "type": "tm.Process",
+              "name": "AWS Lambda Functions",
+              "description": "Lambda functions for CBOR-to-JSON conversion, message routing, device shadow updates, and API integrations. Processes CCI data (non-PHI).",
+              "outOfScope": false,
+              "hasOpenThreats": true,
+              "privilegeLevel": "System",
+              "threats": [
+                {
+                  "id": "threat-003",
+                  "title": "Lambda Code Injection",
+                  "status": "Open",
+                  "severity": "High",
+                  "type": "Tampering",
+                  "description": "Malformed CBOR data could exploit parsing vulnerabilities allowing code execution within Lambda environment.",
+                  "mitigation": "Input validation, safe parsing libraries, sandboxed execution, memory limits",
+                  "modelType": "STRIDE",
+                  "new": false,
+                  "number": 3,
+                  "score": 8.7
+                },
+                {
+                  "id": "threat-004",
+                  "title": "Lambda Function Event Flooding",
+                  "status": "Open",
+                  "severity": "Medium",
+                  "type": "Denial of Service",
+                  "description": "Excessive MQTT messages from compromised devices could trigger Lambda throttling blocking legitimate data processing.",
+                  "mitigation": "Rate limiting at IoT Core, Lambda reserved concurrency, DLQ for failed messages",
+                  "modelType": "STRIDE",
+                  "new": false,
+                  "number": 4,
+                  "score": 9.3
+                }
+              ]
+            }
+          },
+          {
+            "position": {
+              "x": 650,
+              "y": 200
+            },
+            "size": {
+              "width": 160,
+              "height": 100
+            },
+            "attrs": {
+              "text": {
+                "text": "Gateway Server\r\r\n(K8S Pod)"
+              },
+              "body": {
+                "stroke": "red",
+                "strokeWidth": 2.5,
+                "strokeDasharray": null
+              }
+            },
+            "visible": true,
+            "shape": "process",
+            "zIndex": 1,
+            "id": "gateway-server",
+            "data": {
+              "type": "tm.Process",
+              "name": "RxFunction Gateway Server",
+              "description": "Primary backend business logic. Handles device management, fleet-based firmware distribution, data processing, operator portal API, and third-party integrations. Processes CCI data only (non-PHI).",
+              "outOfScope": false,
+              "hasOpenThreats": true,
+              "isWebApplication": true,
+              "privilegeLevel": "System",
+              "threats": [
+                {
+                  "id": "threat-005",
+                  "title": "Container Escape to Cluster",
+                  "status": "Open",
+                  "severity": "Critical",
+                  "type": "Elevation of Privilege",
+                  "description": "Container vulnerability allowing escape to K8S cluster with access to all secrets and services, leading to complete infrastructure compromise.",
+                  "mitigation": "Pod security policies, minimal container images, vulnerability scanning, RBAC restrictions",
+                  "modelType": "STRIDE",
+                  "new": false,
+                  "number": 5,
+                  "score": 9.8
+                },
+                {
+                  "id": "threat-006",
+                  "title": "Third-Party API Key Compromise",
+                  "status": "Open",
+                  "severity": "High",
+                  "type": "Information Disclosure",
+                  "description": "API keys/tokens exposed via environment variables, logs, or memory enabling unauthorized use of third-party services.",
+                  "mitigation": "Secure credential storage, environment-based injection, credential rotation, access auditing",
+                  "modelType": "STRIDE",
+                  "new": false,
+                  "number": 6,
+                  "score": 8.7
+                },
+                {
+                  "id": "threat-007",
+                  "title": "Firmware Distribution Tampering",
+                  "status": "Open",
+                  "severity": "Critical",
+                  "type": "Tampering",
+                  "description": "Compromised server distributes malicious firmware to entire device fleet causing widespread compromise and therapy manipulation.",
+                  "mitigation": "Firmware signing verification, multi-party approval, integrity monitoring, audit trails",
+                  "modelType": "STRIDE",
+                  "new": false,
+                  "number": 7,
+                  "score": 9.3
+                }
+              ]
+            }
+          },
+          {
+            "position": {
+              "x": 100,
+              "y": 450
+            },
+            "size": {
+              "width": 160,
+              "height": 100
+            },
+            "attrs": {
+              "text": {
+                "text": "DocumentDB\r\r\n(MongoDB)"
+              },
+              "topLine": {
+                "stroke": "red",
+                "strokeWidth": 2.5,
+                "strokeDasharray": null
+              },
+              "bottomLine": {
+                "stroke": "red",
+                "strokeWidth": 2.5,
+                "strokeDasharray": null
+              }
+            },
+            "visible": true,
+            "shape": "store",
+            "zIndex": 1,
+            "id": "documentdb",
+            "data": {
+              "type": "tm.Store",
+              "name": "AWS DocumentDB",
+              "description": "Primary database storing device records, therapy history, configurations, enrollment data, firmware manifests, and audit logs. All data is CCI (anonymized via UUID only, non-PHI).",
+              "outOfScope": false,
+              "hasOpenThreats": true,
+              "isALog": true,
+              "storesCredentials": false,
+              "isEncrypted": true,
+              "threats": [
+                {
+                  "id": "threat-008",
+                  "title": "NoSQL Injection on Patient Records",
+                  "status": "Open",
+                  "severity": "Critical",
+                  "type": "Tampering",
+                  "description": "NoSQL injection allows unauthorized access or modification of patient therapy data and configurations.",
+                  "mitigation": "Parameterized queries, input validation, least privilege DB users, query logging and monitoring",
+                  "modelType": "STRIDE",
+                  "new": false,
+                  "number": 8,
+                  "score": 8.7
+                },
+                {
+                  "id": "threat-009",
+                  "title": "Database Backup Exposure",
+                  "status": "Open",
+                  "severity": "High",
+                  "type": "Information Disclosure",
+                  "description": "Unencrypted database backups in S3 expose entire patient population therapy data and personal identifiers.",
+                  "mitigation": "Encrypted backups, access logging, encryption key management, lifecycle policies",
+                  "modelType": "STRIDE",
+                  "new": false,
+                  "number": 9,
+                  "score": 7.1
+                }
+              ]
+            }
+          },
+          {
+            "position": {
+              "x": 350,
+              "y": 450
+            },
+            "size": {
+              "width": 160,
+              "height": 100
+            },
+            "attrs": {
+              "text": {
+                "text": "S3 Storage\r\r\nBuckets"
+              },
+              "topLine": {
+                "stroke": "red",
+                "strokeWidth": 2.5,
+                "strokeDasharray": null
+              },
+              "bottomLine": {
+                "stroke": "red",
+                "strokeWidth": 2.5,
+                "strokeDasharray": null
+              }
+            },
+            "visible": true,
+            "shape": "store",
+            "zIndex": 1,
+            "id": "s3-storage",
+            "data": {
+              "type": "tm.Store",
+              "name": "S3 Storage Buckets",
+              "description": "IAR-signed firmware images (organized by fleet/hardware revision), log aggregation, and temporary file transfer via presigned URLs. All firmware verified by device Secure Boot Manager on download.",
+              "outOfScope": false,
+              "hasOpenThreats": true,
+              "isALog": true,
+              "storesCredentials": false,
+              "isEncrypted": true,
+              "threats": [
+                {
+                  "id": "threat-010",
+                  "title": "Bucket Misconfiguration - Public Access",
+                  "status": "Open",
+                  "severity": "Critical",
+                  "type": "Information Disclosure",
+                  "description": "Public S3 bucket exposes firmware images, therapy logs, or transfer files to unauthorized internet access.",
+                  "mitigation": "Bucket policies, block public access, access logging, automated configuration scanning",
+                  "modelType": "STRIDE",
+                  "new": false,
+                  "number": 10,
+                  "score": 8.9
+                },
+                {
+                  "id": "threat-011",
+                  "title": "Firmware Poisoning Attack",
+                  "status": "Open",
+                  "severity": "Critical",
+                  "type": "Tampering",
+                  "description": "Attacker gaining S3 access replaces firmware with malicious versions, causing fleet-wide compromise through update mechanisms.",
+                  "mitigation": "S3 versioning and locking, multi-party approval, prevent policy changes, monitor modifications",
+                  "modelType": "STRIDE",
+                  "new": false,
+                  "number": 11,
+                  "score": 9.3
+                },
+                {
+                  "id": "threat-012",
+                  "title": "Presigned URL Token Leakage",
+                  "status": "Open",
+                  "severity": "Medium",
+                  "type": "Information Disclosure",
+                  "description": "Long-lived presigned URLs leaked in logs or error messages allowing unauthorized firmware downloads.",
+                  "mitigation": "Short expiration times (15 minutes), URL usage monitoring, secure logging practices",
+                  "modelType": "STRIDE",
+                  "new": false,
+                  "number": 12,
+                  "score": 6.1
+                }
+              ]
+            }
+          },
+          {
+            "position": {
+              "x": 650,
+              "y": 450
+            },
+            "size": {
+              "width": 160,
+              "height": 100
+            },
+            "attrs": {
+              "text": {
+                "text": "Redis Cache"
+              },
+              "topLine": {
+                "stroke": "red",
+                "strokeWidth": 2.5,
+                "strokeDasharray": null
+              },
+              "bottomLine": {
+                "stroke": "red",
+                "strokeWidth": 2.5,
+                "strokeDasharray": null
+              }
+            },
+            "visible": true,
+            "shape": "store",
+            "zIndex": 1,
+            "id": "redis",
+            "data": {
+              "type": "tm.Store",
+              "name": "Redis Cache",
+              "description": "Session storage (OAuth2-Proxy sessions), pub/sub messaging within K8S cluster, and cache layer for frequently accessed device data. Session tokens are sensitive - compromise enables operator impersonation.",
+              "outOfScope": false,
+              "hasOpenThreats": true,
+              "isALog": false,
+              "storesCredentials": true,
+              "isEncrypted": false,
+              "threats": [
+                {
+                  "id": "threat-013",
+                  "title": "Redis Session Key Tampering",
+                  "status": "Open",
+                  "severity": "High",
+                  "type": "Tampering",
+                  "description": "Unsecured Redis connection allows modification of session keys/values enabling operator privilege escalation.",
+                  "mitigation": "Redis authentication, TLS encryption, session integrity checks, access restrictions",
+                  "modelType": "STRIDE",
+                  "new": false,
+                  "number": 13,
+                  "score": 7.1
+                }
+              ]
+            }
+          },
+          {
+            "position": {
+              "x": 100,
+              "y": 100
+            },
+            "size": {
+              "width": 150,
+              "height": 80
+            },
+            "attrs": {
+              "text": {
+                "text": "Gateways\r\r\n(LTE)"
+              },
+              "body": {
+                "stroke": "#333333",
+                "strokeWidth": 1.5,
+                "strokeDasharray": null
+              }
+            },
+            "visible": true,
+            "shape": "actor",
+            "zIndex": 1,
+            "id": "gateways",
+            "data": {
+              "type": "tm.Actor",
+              "name": "Gateways (LTE)",
+              "description": "Fleet of patient home Gateway/Docking Stations connecting via LTE. Authenticate to IoT Core using mTLS with device identity certificates from IAR provisioning.",
+              "outOfScope": false,
+              "hasOpenThreats": false,
+              "providesAuthentication": true,
+              "threats": []
+            }
+          },
+          {
+            "position": {
+              "x": 650,
+              "y": 100
+            },
+            "size": {
+              "width": 150,
+              "height": 80
+            },
+            "attrs": {
+              "text": {
+                "text": "Web Portal\r\r\nUsers"
+              },
+              "body": {
+                "stroke": "#333333",
+                "strokeWidth": 1.5,
+                "strokeDasharray": null
+              }
+            },
+            "visible": true,
+            "shape": "actor",
+            "zIndex": 1,
+            "id": "portal-users",
+            "data": {
+              "type": "tm.Actor",
+              "name": "Web Portal Users",
+              "description": "RxFunction staff (operators, clinicians, support) accessing management portal. Authenticated via MS Entra ID (Azure AD) SSO through OAuth2-Proxy.",
+              "outOfScope": false,
+              "hasOpenThreats": false,
+              "providesAuthentication": true,
+              "threats": []
+            }
+          },
+          {
+            "shape": "flow",
+            "attrs": {
+              "line": {
+                "stroke": "red",
+                "strokeWidth": 2.5,
+                "targetMarker": {
+                  "name": "block"
+                },
+                "sourceMarker": {
+                  "name": ""
+                },
+                "strokeDasharray": null
+              }
+            },
+            "width": 200,
+            "height": 100,
+            "zIndex": 10,
+            "connector": "smooth",
+            "data": {
+              "type": "tm.Flow",
+              "name": "Device Connections (MQTT/mTLS)",
+              "description": "Gateway devices connect to IoT Core via MQTT over mTLS. Authentication via IAR-provisioned device certificates. Carries telemetry, device identifiers, shadow updates, and commands. No PHI transmitted - all data anonymized at source.",
+              "outOfScope": false,
+              "hasOpenThreats": true,
+              "isBidirectional": true,
+              "isEncrypted": true,
+              "isPublicNetwork": true,
+              "protocol": "MQTT/mTLS (TLS 1.2)",
+              "threats": [
+                {
+                  "id": "threat-flow-001",
+                  "title": "MQTT Message Tampering",
+                  "status": "Open",
+                  "severity": "High",
+                  "type": "Tampering",
+                  "description": "Attacker intercepts and modifies MQTT messages causing corrupted telemetry or invalid device state.",
+                  "mitigation": "Message authentication codes, data integrity validation, replay detection",
+                  "modelType": "STRIDE",
+                  "new": false,
+                  "number": 14,
+                  "score": 7.2
+                }
+              ]
+            },
+            "labels": ["Device Connections"],
+            "id": "flow-devices-iot",
+            "source": {
+              "cell": "gateways",
+              "port": null
+            },
+            "target": {
+              "cell": "iot-core",
+              "port": null
+            }
+          },
+          {
+            "shape": "flow",
+            "attrs": {
+              "line": {
+                "stroke": "red",
+                "strokeWidth": 2.5,
+                "targetMarker": {
+                  "name": "block"
+                },
+                "sourceMarker": {
+                  "name": ""
+                },
+                "strokeDasharray": null
+              }
+            },
+            "width": 200,
+            "height": 100,
+            "zIndex": 10,
+            "connector": "smooth",
+            "data": {
+              "type": "tm.Flow",
+              "name": "Firmware Distribution (S3 Pre-signed URL)",
+              "description": "Signed firmware delivered to gateways via S3 presigned HTTPS URLs with short TTL. Gateway Server stages firmware and issues time-limited download link. Device verifies firmware signature before installation.",
+              "outOfScope": false,
+              "hasOpenThreats": true,
+              "isBidirectional": true,
+              "isEncrypted": true,
+              "isPublicNetwork": false,
+              "protocol": "HTTPS (Pre-signed URL)",
+              "threats": [
+                {
+                  "id": "threat-flow-002",
+                  "title": "Presigned URL Replay Attack",
+                  "status": "Open",
+                  "severity": "High",
+                  "type": "Spoofing",
+                  "description": "Attacker replays valid presigned URL within TTL to download firmware for reverse engineering or substitution.",
+                  "mitigation": "Minimal TTL (15 min), single-use URLs where possible, usage audit logging, IP binding",
+                  "modelType": "STRIDE",
+                  "new": false,
+                  "number": 15,
+                  "score": 6.8
+                }
+              ]
+            },
+            "labels": ["Firmware Distribution"],
+            "id": "flow-fw-s3",
+            "source": {
+              "cell": "gateway-server",
+              "port": null
+            },
+            "target": {
+              "cell": "s3-storage",
+              "port": null
+            }
+          },
+          {
+            "shape": "flow",
+            "attrs": {
+              "line": {
+                "stroke": "red",
+                "strokeWidth": 2.5,
+                "targetMarker": {
+                  "name": "block"
+                },
+                "sourceMarker": {
+                  "name": "block"
+                },
+                "strokeDasharray": null
+              }
+            },
+            "width": 200,
+            "height": 100,
+            "zIndex": 10,
+            "connector": "smooth",
+            "data": {
+              "type": "tm.Flow",
+              "name": "Database Operations",
+              "description": "Gateway Server reads/writes device records, configurations, therapy history, and audit logs to DocumentDB. All CCI (anonymized UUID-only, non-PHI).",
+              "outOfScope": false,
+              "hasOpenThreats": true,
+              "isBidirectional": true,
+              "isEncrypted": true,
+              "isPublicNetwork": false,
+              "protocol": "MongoDB Wire Protocol",
+              "threats": [
+                {
+                  "id": "threat-flow-003",
+                  "title": "Connection String Exposure",
+                  "status": "Open",
+                  "severity": "High",
+                  "type": "Information Disclosure",
+                  "description": "Database credentials leaked in logs or error messages enabling unauthorized database access.",
+                  "mitigation": "Secure credential storage, connection string sanitization, structured logging without secrets",
+                  "modelType": "STRIDE",
+                  "new": false,
+                  "number": 16,
+                  "score": 7.9
+                }
+              ]
+            },
+            "labels": ["Database Operations"],
+            "id": "flow-server-db",
+            "source": {
+              "cell": "gateway-server",
+              "port": null
+            },
+            "target": {
+              "cell": "documentdb",
+              "port": null
+            }
+          }
+        ]
+      }
+    ],
+    "diagramTop": 1,
+    "reviewer": "Brian Gray",
+    "threatTop": 16
+  }
+}

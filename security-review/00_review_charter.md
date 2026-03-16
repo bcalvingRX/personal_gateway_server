@@ -1,73 +1,69 @@
-# Security Review Charter
+# Gateway Architecture Overview and Review Charter
 
-## Plain English Description
-This workspace documents a structured, evidence-oriented secure code review of the `walkasins-gateway-server` repository.
+## Repository role in the broader system
+`walkasins-gateway-server` is a Node.js backend service that sits between manager-facing administrative users, backend automation, AWS IoT/SQS infrastructure, and deployed W-200 gateway/device systems. Based on the repository code, its primary roles are:
 
-The review is being performed as part of a controlled pilot of AI-assisted secure code review for RxFunction product software. The goal is to identify security-relevant files, trace important code paths, review narrow modules, and produce outputs that are useful without creating speculative or unsupported findings.
+- manager-facing control plane for systems, fleets, firmware, reports, and user/group administration
+- backend automation/API surface for provisioning systems and processing dirty systems
+- synchronization service that converts backend fleet/device state into AWS IoT shadow updates
+- inbound message processor for device-originated MQTT-style traffic delivered through AWS SQS
+- OTA mediation service that discovers firmware metadata, caches firmware/manifests in S3, and publishes device retrieval URLs
 
-This review is intended to support internal engineering and security work. It does not replace manual review, standard scanning, verification testing, runtime validation, hardware testing, or independent third-party testing.
+## Component type determination
+Determined component type:
+- backend service
+- cloud support service for gateway/device fleet management
 
----
+Reasoning:
+- two HTTPS Express applications are started from `index.js`
+- the code exposes HTTP route groups for manager and automation clients
+- state is persisted in MongoDB and Redis rather than device-local storage
+- AWS IoT, SQS, and S3 integrations indicate cloud-side control-plane responsibilities
+- firmware management, fleet targeting, and device-shadow synchronization are performed server-side
 
-## Repository
-`walkasins-gateway-server`
+## Major services, modules, and interfaces
+- Manager app: `apps/manager-app.js`
+- API app: `apps/api-app.js`
+- HTTP routes: `routes/*.route.js`
+- MQTT/SQS inbound dispatch: `services/aws.sqs.service.js`, `routes/mqtt.route.js`
+- Manager/API middleware: `middleware/*.middleware.js`
+- Core controllers: `controllers/*.controller.js`
+- Persistence and orchestration services: `services/*.service.js`
+- Persistent models: `model/` and `model/w200/`
 
-## Review Goals
-- understand the architecture of the gateway server
-- identify major trust boundaries
-- map externally reachable attack surface
-- review authentication and validation controls
-- trace high-risk code paths
-- record only code-grounded observations
-- separate confirmed findings from unresolved questions
-- identify what requires runtime, cloud, or hardware validation
+## Major inbound and outbound data flows
+- Manager user -> HTTPS manager routes -> auth/validation -> controllers -> MongoDB/Redis/AWS
+- Automation client -> HTTPS API routes -> API key validation -> provisioning or dirty-system processing
+- AWS SQS message -> MQTT route dispatcher -> system controller handlers -> Redis, MongoDB, S3, or publish-back to AWS IoT
+- Manager firmware/fleet changes -> MongoDB state update -> dirty flag set -> `/api/processDirtySystems` -> AWS IoT shadow desired state update
+- Device data request -> inbound MQTT `data` command -> firmware/manifest retrieval -> S3 presigned URL -> AWS IoT publish back to requesting thing
 
-## Review Method
-The review follows a structured sequence:
+## Security-relevant responsibilities
+- manager identity and authorization enforcement
+- API-key validation for automation endpoints
+- user/group/permission state management
+- provisioning of new systems and devices
+- shell command dispatch to systems
+- fleet and firmware metadata management
+- device message ingestion and metrics persistence
+- firmware manifest generation and OTA file delivery orchestration
+- TLS key/certificate loading for HTTPS server startup
 
-1. architecture mapping
-2. trust boundary identification
-3. security-relevant file inventory
-4. API attack surface mapping
-5. authentication and validation review
-6. high-risk code-path tracing
-7. evidence consolidation
-8. findings creation only when code-supported
+## Review method and guardrails
+- update existing review artifacts in place
+- use repository source code as the source of truth
+- keep outputs evidence-oriented and suitable for engineering, security, and audit review
+- separate confirmed observations from uncertain concerns requiring manual validation
+- avoid speculative vulnerabilities or unsupported production-impact claims
 
-## Review Principles
-- avoid speculative vulnerability generation
-- focus on architecture understanding and trust boundaries
-- tie observations to code paths in scope
-- keep findings separate from evidence
-- call out uncertainty explicitly
-- identify where static review is insufficient
+## Unknowns and out-of-scope areas
+- ingress/proxy identity handling ahead of the manager app
+- AWS IoT topic policies and device certificate policy enforcement
+- S3 bucket policy, lifecycle, encryption, and access logging
+- device-side firmware verification and install logic
+- production database seed state and operational bootstrap procedures
 
-## Expected Artifacts
-Artifacts in this workspace may include:
-- architecture notes
-- trust boundaries
-- security-relevant file inventory
-- API endpoint map
-- auth/validation review
-- code-path traces
-- evidence reviews
-- findings
-- workflow status and final instructions
-
-## Scope Notes
-The repository appears to implement a gateway/backend service that interacts with:
-- manager-facing administrative functionality
-- backend automation/API-key flows
-- AWS IoT
-- AWS SQS
-- Redis
-- MongoDB
-- firmware and fleet metadata
-- connected gateway/device systems
-
-## Deliverable Style
-The review artifacts should be:
-- readable by humans
-- useful to other AI tools
-- structured for later threat modeling
-- suitable for internal engineering/security handoff
+## Static-review caveats
+- this workspace reflects source-code review only
+- no runtime cloud configuration, hardware behavior, or deployment topology was available for verification
+- no application code, dependencies, or project configuration were changed

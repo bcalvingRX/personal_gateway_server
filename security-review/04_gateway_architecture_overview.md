@@ -1,291 +1,111 @@
-# Gateway Architecture Overview
-
-## Plain English Description
-
-This document summarizes the architecture of the walkasins-gateway-server based on code review.
-
-The gateway server sits between several different actors:
-
-- Manager web application (administrative UI)
-- Backend automation systems
-- AWS IoT infrastructure
-- Connected gateway devices and their peripherals
-- Internal state storage (MongoDB, Redis)
-
-The server acts as both:
-
-1. **Control plane for managers**
-   - issuing commands
-   - managing firmware
-   - managing fleets and groups
-
-2. **Synchronization bridge**
-   - translating backend state into device-facing updates
-   - receiving device/backend messages
-
----
-
-# High-Level Architecture
-
-Manager UI
-↓  
-Manager API (session auth)
-
-Backend Automation
-↓  
-API routes (API key auth)
-
-Gateway Server
-↓  
-Device Messaging Layer (AWS IoT)
-
-Devices / Gateway Hardware
-
----
-
-# Major Components
-
-## 1. Manager Application API
-
-Files:
-
-- apps/manager-app.js
-- routes/system.route.js
-- routes/firmwareupdate.route.js
-- routes/usermanagement.route.js
-- controllers/system.controller.js
-- controllers/fwupdatemanagement.controller.js
-
-Responsibilities:
-
-- system control commands
-- firmware management
-- fleet and group management
-- user administration
-- shell commands
-
-Security controls:
-
-- session cookie validation
-- user permission checks
-- role/group permission model
-
----
-
-## 2. Public / Automation API
-
-Files:
-
-- apps/api-app.js
-- routes/api.route.js
-- controllers/api.controller.js
-
-Responsibilities:
-
-- provisioning systems
-- device registration
-- dirty-system processing
-- backend automation hooks
-
-Security controls:
-
-- API key authentication
-- request validation middleware
-
----
-
-## 3. Firmware and Fleet Management
-
-Files:
-
-- controllers/fwupdatemanagement.controller.js
-- services/system.service.js
-- model/w200/*
-
-Responsibilities:
-
-- firmware metadata storage
-- group definitions
-- fleet definitions
-- firmware-to-group assignment
-
-These changes update backend state and mark systems as **dirty**.
-
-Dirty systems are later processed into device update signals.
-
----
-
-## 4. Dirty System Processing
-
-Files:
-
-- controllers/api.controller.js
-- services/system.service.js
-
-Responsibilities:
-
-- detect systems marked dirty
-- generate state hashes representing:
-  - device state
-  - firmware group state
-- publish these hashes to AWS IoT thing shadow desired properties
-
-These hashes act as synchronization signals to gateway devices.
-
----
-
-## 5. Device Messaging Layer
-
-Files:
-
-- routes/mqtt.route.js
-- services/aws.iot.service.js
-- services/aws.sqs.service.js
-
-Responsibilities:
-
-- publish commands to devices
-- receive backend/device messages
-- interact with AWS IoT shadow state
-
-This layer forms the **device communication boundary**.
-
----
-
-## 6. Redis Event Bus
-
-Files:
-
-- services/redis.service.js
-
-Responsibilities:
-
-- internal pub/sub
-- shell response streaming
-- asynchronous state propagation
-
-Redis acts as an internal messaging bus for real-time events.
-
----
-
-## 7. Database Layer
-
-Files:
-
-- services/database.service.js
-- model/w200/*
-- model/user*
-
-Responsibilities:
-
-- firmware records
-- device records
-- fleet and group state
-- user accounts and permissions
-
-MongoDB appears to store the persistent system state.
-
----
-
-# Key Trust Boundaries
-
-1. Manager UI → Gateway Server
-   - authenticated user session
-   - permission enforcement
-
-2. Automation Systems → API Routes
-   - API key authentication
-
-3. Gateway Server → AWS IoT
-   - device command publishing
-   - shadow state updates
-
-4. AWS IoT → Devices
-   - device control plane
-
-5. Device Messages → Gateway Server
-   - inbound MQTT/SQS processing
-
-6. Gateway Server → Internal State
-   - Redis event bus
-   - MongoDB storage
-
----
-
-# Command and Update Flow
-
-## Manager Control Flow
-
-Manager user  
-→ Manager API route  
-→ Permission validation  
-→ Controller action  
-→ AWS IoT publish  
-→ Device receives command
-
-Example:
-
-POST /api/system/shellCommand
-
-
----
-
-## Firmware Update Flow
-
-Manager modifies fleet or firmware  
-→ Backend state updated  
-→ Systems marked dirty  
-→ Dirty-system processor runs  
-→ Device and fleet hashes generated  
-→ AWS IoT shadow desired state updated  
-→ Gateway device reacts
-
----
-
-## Device Sync Flow
-
-Backend state changes  
-→ Hash updates pushed to device shadow  
-→ Gateway device compares hashes  
-→ Device fetches updated manifest if needed
-
----
-
-# Observed Security Model
-
-Authentication types:
-
-- Manager session cookies
-- API key authentication
-- TLS certificate validation for instruments
-
-Authorization model:
-
-- user → group → permissions
-- permissions cached in Redis
-
-Validation model:
-
-- centralized express-validator middleware
-- sanitized values passed through `res.locals.data`
-
----
-
-# Architecture Summary
-
-The gateway server acts as a central control and synchronization node between:
-
-- management interfaces
-- backend automation
-- AWS IoT messaging
-- deployed gateway systems
-
-Key operational behaviors:
-
-- manager commands publish directly to devices
-- firmware updates modify backend state first
-- dirty-system processing synchronizes state to devices
-- inbound messaging likely completes the device communication loop
-
-The next review phase focuses on the **inbound messaging control plane** to complete the architecture trace.
-
+# Discovery Review Plan
+
+## Purpose
+This file ranks the next focused review targets based on the refreshed discovery outputs, security map, trust boundaries, privileged operations, and traced code paths.
+
+## Prioritized security-relevant code paths
+### 1. Manager auth and permission path
+- Priority: critical
+- Code-path artifact: `security-review/code-paths/manager_auth_permission_path.md`
+- Reasoning:
+  - establishes manager identity and route authorization
+  - gates user/group administration, system control, and firmware operations
+  - depends on a sensitive trust boundary between request metadata and authorization state
+- Recommended focused review artifact:
+  - `07_authorization_access_control_review.md`
+
+### 2. Inbound device-message processing and file-delivery path
+- Priority: critical
+- Code-path artifacts:
+  - `security-review/code-paths/inbound_handler_processing_path.md`
+  - `security-review/code-paths/inbound_messaging_control_plane.md`
+- Reasoning:
+  - crosses the device/cloud message trust boundary
+  - dispatches externally supplied input into persistence, Redis pub/sub, and OTA file delivery logic
+  - includes firmware/manifest retrieval requests and metrics ingestion
+- Recommended focused review artifact:
+  - `08_inbound_device_message_trust_boundary_review.md`
+
+### 3. Firmware and fleet management to OTA propagation path
+- Priority: critical
+- Code-path artifact: `security-review/code-paths/firmware_update_management_path.md`
+- Reasoning:
+  - controls firmware metadata, fleet targeting, and dirty-flag propagation
+  - influences what devices will later retrieve
+  - crosses manager/admin trust boundary into persistent OTA state
+- Recommended focused review artifact:
+  - `09_firmware_manifest_file_delivery_ota_review.md`
+
+### 4. Dirty-system processing and device shadow synchronization path
+- Priority: high
+- Code-path artifact: `security-review/code-paths/dirty_system_processing_path.md`
+- Reasoning:
+  - translates backend state changes into AWS IoT desired shadow updates
+  - is API-key-triggered and operationally privileged
+  - bridges manager/backend changes into device-visible synchronization state
+- Recommended focused review artifact:
+  - `06_initial_architecture_attack_surface_analysis.md`
+
+### 5. System shell command control path
+- Priority: high
+- Code-path artifact: `security-review/code-paths/system_shell_command_path.md`
+- Reasoning:
+  - publishes operator-supplied commands to deployed systems
+  - high-sensitivity privileged action even when route authorization is present
+- Recommended focused review artifact:
+  - `07_authorization_access_control_review.md`
+
+### 6. User/group mutation and permission cache invalidation path
+- Priority: high
+- Code-path artifacts:
+  - `security-review/code-paths/usermanagement_controller_path.md`
+  - `security-review/code-paths/permission_cache_invalidation_path.md`
+- Reasoning:
+  - changes authorization state and cache correctness
+  - important for determining whether route protection is consistently enforced over time
+- Recommended focused review artifact:
+  - `07_authorization_access_control_review.md`
+
+## Recommended next 3 to 6 focused review targets
+1. Authorization and access control across manager routes
+   - Why it matters:
+     - authorization gates the highest-value manager surfaces
+     - the manager trust boundary depends on request-derived identity and group permissions
+   - Artifact to produce/update next:
+     - `07_authorization_access_control_review.md`
+
+2. Inbound device-message and trust-boundary review
+   - Why it matters:
+     - inbound MQTT/SQS traffic can trigger persistence, publish-back, and OTA retrieval behavior
+   - Artifact to produce/update next:
+     - `08_inbound_device_message_trust_boundary_review.md`
+
+3. Firmware manifest, file-delivery, and OTA orchestration review
+   - Why it matters:
+     - firmware metadata and fleet targeting directly influence downstream device update state
+   - Artifact to produce/update next:
+     - `09_firmware_manifest_file_delivery_ota_review.md`
+
+4. Architecture and attack-surface consolidation
+   - Why it matters:
+     - discovery identified multiple interacting entry points and trust boundaries that need a single evidence-backed view
+   - Artifact to produce/update next:
+     - `06_initial_architecture_attack_surface_analysis.md`
+
+5. Shell command and follow-up control path validation
+   - Why it matters:
+     - remote command publication remains one of the most privileged operations in the codebase
+   - Artifact to produce/update next:
+     - supporting updates in `security-review/code-paths/` and `07_authorization_access_control_review.md`
+
+## Single highest-priority next review
+`07_authorization_access_control_review.md`
+
+Reasoning:
+- it directly governs the manager-side trust boundary into user/group mutation, system control, and firmware/fleet management
+- discovery shows multiple high-value routes share the same authorization path
+- resolving this surface clarifies the security posture of several other privileged operations
+
+## Caveats
+- prioritized targets are derived from repository code and visible configuration only
+- cloud policy, ingress behavior, device-side logic, and seed/bootstrap procedures still require manual validation

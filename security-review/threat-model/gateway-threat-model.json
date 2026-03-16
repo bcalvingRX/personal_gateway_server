@@ -1,0 +1,755 @@
+{
+  "summary": {
+    "title": "RxFunction Gateway Server - Baseline Threat Model",
+    "description": "Comprehensive threat model for the RxFunction W-200 IoT Gateway Server. This represents all identifiable threats without assuming controls are in place. Threats are categorized by STRIDE and mapped to confirmed findings (CF-xx) and uncertain concerns (UC-xx) from the security review.",
+    "date": "2026-03-16",
+    "contributors": "Security Review Team"
+  },
+  "detail": {
+    "assets": [
+      {
+        "id": "ASSET-01",
+        "name": "Firmware Binaries",
+        "importance": "Critical",
+        "description": "OTA firmware files distributed to W-200 devices"
+      },
+      {
+        "id": "ASSET-02",
+        "name": "Device Manifests",
+        "importance": "Critical",
+        "description": "Fleet configuration and firmware assignment manifests"
+      },
+      {
+        "id": "ASSET-03",
+        "name": "User Credentials & Sessions",
+        "importance": "Critical",
+        "description": "Manager app authentication tokens, session cookies"
+      },
+      {
+        "id": "ASSET-04",
+        "name": "API Keys",
+        "importance": "High",
+        "description": "API provisioning and system management keys"
+      },
+      {
+        "id": "ASSET-05",
+        "name": "Device Identity",
+        "importance": "Critical",
+        "description": "AWS IoT Core thing IDs, MQTT topic authorization"
+      },
+      {
+        "id": "ASSET-06",
+        "name": "System Configuration",
+        "importance": "High",
+        "description": "Fleet-to-system mappings, firmware assignments, device enrollments"
+      },
+      {
+        "id": "ASSET-07",
+        "name": "User Permissions & Groups",
+        "importance": "High",
+        "description": "RBAC configuration, role assignments, access control lists"
+      }
+    ],
+    "externalEntities": [
+      {
+        "id": "EE-01",
+        "name": "Manager Portal Users",
+        "type": "User",
+        "description": "Administrators and operators accessing the manager application",
+        "outOfScope": false,
+        "x": 50,
+        "y": 100
+      },
+      {
+        "id": "EE-02",
+        "name": "W-200 Gateway Devices",
+        "type": "Device",
+        "description": "Field devices requesting firmware, manifests, and sending telemetry",
+        "outOfScope": false,
+        "x": 50,
+        "y": 400
+      },
+      {
+        "id": "EE-03",
+        "name": "GitHub Releases API",
+        "type": "ExternalService",
+        "description": "Firmware source for GitHub-backed OTA",
+        "outOfScope": true,
+        "x": 700,
+        "y": 100
+      },
+      {
+        "id": "EE-04",
+        "name": "Green Light Guru (GLG)",
+        "type": "ExternalService",
+        "description": "Firmware source for GLG-backed OTA",
+        "outOfScope": true,
+        "x": 700,
+        "y": 200
+      },
+      {
+        "id": "EE-05",
+        "name": "AWS IoT Core",
+        "type": "CloudService",
+        "description": "MQTT broker and device authentication",
+        "outOfScope": true,
+        "x": 700,
+        "y": 350
+      },
+      {
+        "id": "EE-06",
+        "name": "AWS SQS",
+        "type": "CloudService",
+        "description": "Message queue for inbound device traffic",
+        "outOfScope": true,
+        "x": 700,
+        "y": 450
+      },
+      {
+        "id": "EE-07",
+        "name": "AWS S3",
+        "type": "CloudService",
+        "description": "Firmware binary and manifest storage",
+        "outOfScope": true,
+        "x": 700,
+        "y": 550
+      }
+    ],
+    "processes": [
+      {
+        "id": "P-01",
+        "name": "Manager Application",
+        "type": "WebApp",
+        "description": "Express.js app (port 9422) handling user auth, system config, firmware management",
+        "outOfScope": false,
+        "x": 350,
+        "y": 150
+      },
+      {
+        "id": "P-02",
+        "name": "API Application",
+        "type": "WebApp",
+        "description": "Express.js app (port 9443) handling API-key-based provisioning",
+        "outOfScope": false,
+        "x": 350,
+        "y": 250
+      },
+      {
+        "id": "P-03",
+        "name": "MQTT Message Router",
+        "type": "MessageProcessor",
+        "description": "Processes inbound device messages from SQS, routes to controllers",
+        "outOfScope": false,
+        "x": 350,
+        "y": 400
+      },
+      {
+        "id": "P-04",
+        "name": "SQS Message Consumer",
+        "type": "MessageProcessor",
+        "description": "Receives messages from AWS SQS queue",
+        "outOfScope": false,
+        "x": 500,
+        "y": 400
+      },
+      {
+        "id": "P-05",
+        "name": "Firmware Manager",
+        "type": "Service",
+        "description": "Fetches and caches firmware from GitHub/GLG to S3",
+        "outOfScope": false,
+        "x": 500,
+        "y": 100
+      }
+    ],
+    "dataStores": [
+      {
+        "id": "DS-01",
+        "name": "MongoDB",
+        "type": "DatabaseSQL",
+        "description": "Systems, fleets, firmware records, users, permissions, device metrics",
+        "outOfScope": false,
+        "x": 350,
+        "y": 550
+      },
+      {
+        "id": "DS-02",
+        "name": "Redis",
+        "type": "DatabaseNoSQL",
+        "description": "Session store, rate limit counters, caching",
+        "outOfScope": false,
+        "x": 450,
+        "y": 550
+      },
+      {
+        "id": "DS-03",
+        "name": "AWS S3",
+        "type": "CloudStorage",
+        "description": "Firmware binaries and manifests (via presigned URLs)",
+        "outOfScope": true,
+        "x": 700,
+        "y": 550
+      }
+    ],
+    "dataFlows": [
+      {
+        "id": "DF-01",
+        "name": "User Login / Session",
+        "from": "EE-01",
+        "to": "P-01",
+        "protocol": "HTTPS",
+        "description": "Manager portal user authentication and session cookie"
+      },
+      {
+        "id": "DF-02",
+        "name": "Manager Request",
+        "from": "P-01",
+        "to": "DS-01",
+        "description": "User config, permission lookups, system/fleet queries"
+      },
+      {
+        "id": "DF-03",
+        "name": "Session Storage",
+        "from": "P-01",
+        "to": "DS-02",
+        "protocol": "Redis",
+        "description": "Session tokens, rate limit state"
+      },
+      {
+        "id": "DF-04",
+        "name": "API Request",
+        "from": "P-02",
+        "to": "DS-01",
+        "description": "API key validation, system provisioning"
+      },
+      {
+        "id": "DF-05",
+        "name": "Device Message Ingress",
+        "from": "EE-02",
+        "to": "EE-05",
+        "protocol": "MQTT over TLS",
+        "description": "Device publishes to gateway/send/cbor topic"
+      },
+      {
+        "id": "DF-06",
+        "name": "SQS Message Delivery",
+        "from": "EE-06",
+        "to": "P-04",
+        "protocol": "AWS API",
+        "description": "Inbound message delivery from SQS queue"
+      },
+      {
+        "id": "DF-07",
+        "name": "Message Processing",
+        "from": "P-04",
+        "to": "P-03",
+        "description": "Router decodes and dispatches inbound payload"
+      },
+      {
+        "id": "DF-08",
+        "name": "Device Data Query",
+        "from": "P-03",
+        "to": "DS-01",
+        "description": "Firmware/manifest lookups, metrics storage"
+      },
+      {
+        "id": "DF-09",
+        "name": "Firmware Registration",
+        "from": "P-01",
+        "to": "P-05",
+        "description": "Manager registers firmware source (GitHub/GLG)"
+      },
+      {
+        "id": "DF-10",
+        "name": "GitHub Fetch",
+        "from": "P-05",
+        "to": "EE-03",
+        "protocol": "HTTPS",
+        "description": "Verifies firmware exists at GitHub release"
+      },
+      {
+        "id": "DF-11",
+        "name": "GLG Fetch",
+        "from": "P-05",
+        "to": "EE-04",
+        "protocol": "HTTPS",
+        "description": "Verifies firmware exists at GLG API"
+      },
+      {
+        "id": "DF-12",
+        "name": "Firmware Download & Cache",
+        "from": "P-05",
+        "to": "DS-03",
+        "description": "Download from GitHub/GLG and upload to S3"
+      },
+      {
+        "id": "DF-13",
+        "name": "Firmware Registration Store",
+        "from": "P-05",
+        "to": "DS-01",
+        "description": "Store firmware metadata (source, version, etc.)"
+      },
+      {
+        "id": "DF-14",
+        "name": "Device File Request",
+        "from": "EE-02",
+        "to": "P-03",
+        "protocol": "MQTT/SQS",
+        "description": "Device requests firmware or manifest by ID/hash"
+      },
+      {
+        "id": "DF-15",
+        "name": "Presigned URL Response",
+        "from": "P-03",
+        "to": "EE-02",
+        "protocol": "MQTT",
+        "description": "Backend returns S3 presigned URL"
+      },
+      {
+        "id": "DF-16",
+        "name": "Firmware Download from S3",
+        "from": "EE-02",
+        "to": "DS-03",
+        "protocol": "HTTPS",
+        "description": "Device downloads firmware using presigned URL"
+      },
+      {
+        "id": "DF-17",
+        "name": "Device Telemetry (Metrics)",
+        "from": "EE-02",
+        "to": "P-03",
+        "protocol": "MQTT/SQS",
+        "description": "Device sends system metrics, device logs"
+      }
+    ]
+  },
+  "threats": [
+    {
+      "id": "T-AUTH-01",
+      "category": "Spoofing",
+      "title": "Manager User Identity Spoofing via Header Injection",
+      "description": "Manager app trusts useremail request header without binding to session state. Attacker can present different user emails while supplying a valid sessID cookie.",
+      "severity": "High",
+      "likelihood": "High",
+      "element": "P-01",
+      "relatedAssets": ["ASSET-03", "ASSET-07"],
+      "affectedDataFlow": ["DF-01"],
+      "linkedFindings": ["CF-01"],
+      "linkedConcerns": ["UC-01"],
+      "mitigations": "None in current code; relies on upstream proxy/ingress",
+      "remediationSteps": [
+        "Bind useremail to req.session.user after authentication",
+        "Reject useremail headers supplied by client",
+        "Validate identity against server-side session before authorization"
+      ]
+    },
+    {
+      "id": "T-AUTH-02",
+      "category": "Spoofing",
+      "title": "Device Identity Spoofing in MQTT Messages",
+      "description": "MQTT message validation assumes AWS IoT policy enforces publisher identity, but code does not verify thingID against certificate chain. If AWS IoT policy is misconfigured or credentials compromised, arbitrary thingID can be injected.",
+      "severity": "High",
+      "likelihood": "Medium",
+      "element": "P-03",
+      "relatedAssets": ["ASSET-05", "ASSET-02"],
+      "affectedDataFlow": ["DF-14"],
+      "linkedConcerns": ["UC-03"],
+      "mitigations": "AWS IoT Core certificate-based auth (external control)",
+      "remediationSteps": [
+        "Verify AWS IoT policy restricts publish to device-owned topics",
+        "Log and audit device message origins",
+        "Add per-device topic validation in application layer"
+      ]
+    },
+    {
+      "id": "T-AUTH-03",
+      "category": "Spoofing",
+      "title": "First-User Bootstrap Creates Admin Without Approval",
+      "description": "When user count is zero, any presented identity is automatically assigned Admin Group. Attacker accessing empty database gets immediate administrative access.",
+      "severity": "Critical",
+      "likelihood": "Medium",
+      "element": "P-01",
+      "relatedAssets": ["ASSET-03", "ASSET-07"],
+      "linkedFindings": ["CF-02"],
+      "linkedConcerns": ["UC-02"],
+      "mitigations": "None; relies on production pre-seeding users",
+      "remediationSteps": [
+        "Disable implicit first-user bootstrap in code",
+        "Require out-of-band provisioning step or seed script",
+        "Add flag to prevent re-entry into bootstrap state after migrations"
+      ]
+    },
+    {
+      "id": "T-AUTH-04",
+      "category": "Spoofing",
+      "title": "API Key Compromise or Reuse",
+      "description": "API keys stored in MongoDB can be replayed. No key rotation, scope limitation, or rate limiting per key visible. Compromised key can provision systems without rate limit.",
+      "severity": "High",
+      "likelihood": "Medium",
+      "element": "P-02",
+      "relatedAssets": ["ASSET-04", "ASSET-06"],
+      "affectedDataFlow": ["DF-04"],
+      "mitigations": "API keys are hashed, but no visibility into key rotation policies",
+      "remediationSteps": [
+        "Implement API key expiration and rotation",
+        "Add per-key rate limits",
+        "Log all API key usage with context"
+      ]
+    },
+    {
+      "id": "T-AUTHZ-01",
+      "category": "Elevation of Privilege",
+      "title": "Write Routes Protected Only by VIEW Permission",
+      "description": "System and firmware mutation routes (setFleet, modifySystem, saveFirmware, saveFleet, saveGroup, modifyFleet) require only SYSTEM:view permission, not a write/edit/manage permission.",
+      "severity": "High",
+      "likelihood": "High",
+      "element": "P-01",
+      "relatedAssets": ["ASSET-06", "ASSET-02"],
+      "linkedFindings": ["CF-03"],
+      "mitigations": "None; code explicitly checks for view-only permission",
+      "remediationSteps": [
+        "Reclassify mutation routes to require edit/add/manage permissions",
+        "Review UserGroups and Permissions documents for actual role exposure",
+        "Add regression tests for permission enforcement"
+      ]
+    },
+    {
+      "id": "T-AUTHZ-02",
+      "category": "Elevation of Privilege",
+      "title": "Cross-Fleet Firmware Access via Identifier Enumeration",
+      "description": "Inbound device data requests are served by firmware_id or state_hash without verifying the requesting device's fleet assignment. Any device can request any known firmware ID.",
+      "severity": "High",
+      "likelihood": "High",
+      "element": "P-03",
+      "relatedAssets": ["ASSET-01", "ASSET-02"],
+      "affectedDataFlow": ["DF-14"],
+      "linkedFindings": ["CF-04"],
+      "mitigations": "None in application code",
+      "remediationSteps": [
+        "Resolve thingID to system/fleet before serving firmware",
+        "Restrict manifest access to the active manifest for that system",
+        "Add tests for off-fleet firmware request denial"
+      ]
+    },
+    {
+      "id": "T-AUTHZ-03",
+      "category": "Elevation of Privilege",
+      "title": "Permission Hierarchy Bypass via Group Manipulation",
+      "description": "User service attempts to prevent escalation via permission levels, but complex hierarchy logic may have edge cases. User could attempt to add permissions they don't hold.",
+      "severity": "Medium",
+      "likelihood": "Low",
+      "element": "P-01",
+      "relatedAssets": ["ASSET-07"],
+      "mitigations": "Permission filtering is present but not formally verified",
+      "remediationSteps": [
+        "Add comprehensive unit tests for permission hierarchy rules",
+        "Simplify permission model if possible",
+        "Add audit logging for all permission changes"
+      ]
+    },
+    {
+      "id": "T-TAMPER-01",
+      "category": "Tampering",
+      "title": "Firmware Binary Tampering in Transit or at Source",
+      "description": "Firmware is downloaded from GitHub/GLG and cached to S3 without cryptographic integrity verification. Modified binary cannot be detected before device deployment.",
+      "severity": "Critical",
+      "likelihood": "Medium",
+      "element": "P-05",
+      "relatedAssets": ["ASSET-01"],
+      "affectedDataFlow": ["DF-10", "DF-11", "DF-12", "DF-16"],
+      "linkedFindings": ["CF-05"],
+      "linkedConcerns": ["UC-04"],
+      "mitigations": "None in backend; relies on device-side checks",
+      "remediationSteps": [
+        "Persist expected SHA256/SHA512 digest with each firmware record",
+        "Verify downloaded binary against digest before S3 upload",
+        "Refresh S3 presigned URLs with verification on re-issue",
+        "Align with device-side signature/digest validation"
+      ]
+    },
+    {
+      "id": "T-TAMPER-02",
+      "category": "Tampering",
+      "title": "Manifest Tampering or Substitution",
+      "description": "Manifests are keyed only by state_hash and returned without integrity verification. Modified manifest file in MongoDB or S3 could be served to devices.",
+      "severity": "High",
+      "likelihood": "Medium",
+      "element": "P-03",
+      "relatedAssets": ["ASSET-02"],
+      "affectedDataFlow": ["DF-15"],
+      "linkedFindings": ["CF-04"],
+      "mitigations": "Presigned URLs provide transport security but not content verification",
+      "remediationSteps": [
+        "Sign manifest records with server key",
+        "Verify signature before returning to device",
+        "Bind manifest to specific system/fleet to prevent cross-fleet substitution"
+      ]
+    },
+    {
+      "id": "T-TAMPER-03",
+      "category": "Tampering",
+      "title": "MongoDB Record Injection or Modification",
+      "description": "Application accepts user input and stores to MongoDB without full input validation on all fields. SQL-injection-equivalent attacks may be possible via document field manipulation.",
+      "severity": "High",
+      "likelihood": "Medium",
+      "element": "DS-01",
+      "relatedAssets": ["ASSET-06", "ASSET-07"],
+      "mitigations": "Mongoose schema validation provides some protection",
+      "remediationSteps": [
+        "Enforce strict payload validation at all input boundaries",
+        "Use parameterized queries (already Mongoose default)",
+        "Regular schema audits"
+      ]
+    },
+    {
+      "id": "T-TAMPER-04",
+      "category": "Tampering",
+      "title": "Session Token Tampering or Prediction",
+      "description": "Redis stores session tokens. If Redis connection lacks authentication or uses weak secrets, tokens can be read or modified.",
+      "severity": "High",
+      "likelihood": "Low",
+      "element": "DS-02",
+      "relatedAssets": ["ASSET-03"],
+      "affectedDataFlow": ["DF-03"],
+      "mitigations": "Redis password in .env file (weak secret management)",
+      "remediationSteps": [
+        "Use strong Redis password from secrets manager",
+        "Enable Redis persistence encryption",
+        "Monitor Redis access logs"
+      ]
+    },
+    {
+      "id": "T-TAMPER-05",
+      "category": "Tampering",
+      "title": "GitHub OTA Metadata Mismatch",
+      "description": "GitHub release asset ID is returned during lookup but not persisted. Download function expects ID but receives GitHub metadata fields, causing potential retrieval of wrong asset or failure.",
+      "severity": "Medium",
+      "likelihood": "High",
+      "element": "P-05",
+      "relatedAssets": ["ASSET-01"],
+      "affectedDataFlow": ["DF-10"],
+      "linkedFindings": ["CF-06"],
+      "mitigations": "None; code path is broken",
+      "remediationSteps": [
+        "Persist GitHub asset ID in firmware record",
+        "Use asset ID exclusively in download function",
+        "Add integration test for GitHub-backed firmware end-to-end"
+      ]
+    },
+    {
+      "id": "T-INFO-01",
+      "category": "Information Disclosure",
+      "title": "S3 Presigned URL Exposure",
+      "description": "Presigned URLs are returned to devices via MQTT. If message is intercepted or logged, URL is valid for configured duration and can be reused.",
+      "severity": "Medium",
+      "likelihood": "Medium",
+      "element": "P-03",
+      "relatedAssets": ["ASSET-01"],
+      "affectedDataFlow": ["DF-15", "DF-16"],
+      "mitigations": "Short-lived presigned URLs (examined and found acceptable)",
+      "remediationSteps": [
+        "Verify S3 expiry configuration matches policy",
+        "Enforce HTTPS-only for presigned URL delivery",
+        "Log presigned URL issuance for audit"
+      ]
+    },
+    {
+      "id": "T-INFO-02",
+      "category": "Information Disclosure",
+      "title": "Session Tokens in Logs",
+      "description": "Manager app logs request details. If logs are not properly secured, session cookies or tokens can be extracted.",
+      "severity": "High",
+      "likelihood": "Medium",
+      "element": "P-01",
+      "relatedAssets": ["ASSET-03"],
+      "mitigations": "winston logger is configured but log sanitization not visible",
+      "remediationSteps": [
+        "Mask or redact auth headers and cookies in logs",
+        "Restrict log file access to authorized personnel",
+        "Implement log rotation and secure deletion"
+      ]
+    },
+    {
+      "id": "T-INFO-03",
+      "category": "Information Disclosure",
+      "title": "API Keys and Credentials in Environment / Code",
+      "description": ".env file contains API keys, secrets, and database credentials. If file is exposed or logged, all credentials are compromised.",
+      "severity": "Critical",
+      "likelihood": "Medium",
+      "element": "P-01",
+      "relatedAssets": ["ASSET-04"],
+      "mitigations": ".env not version controlled (per .gitignore), but checked in Docker/K8S config is unknown",
+      "remediationSteps": [
+        "Use secrets manager (AWS Secrets Manager, HashiCorp Vault)",
+        "Never pass secrets via environment variables in production",
+        "Rotate all exposed secrets immediately"
+      ]
+    },
+    {
+      "id": "T-INFO-04",
+      "category": "Information Disclosure",
+      "title": "Firmware ID Enumeration",
+      "description": "Firmware IDs are sequential or predictable. Attacker can enumerate all registered firmware by trying different IDs.",
+      "severity": "Medium",
+      "likelihood": "High",
+      "element": "DS-01",
+      "relatedAssets": ["ASSET-01"],
+      "mitigations": "None; access is gated only by thingID (which is not verified)",
+      "remediationSteps": [
+        "Use cryptographically random firmware IDs (UUIDs)",
+        "Implement access logging for all firmware lookups",
+        "Restrict firmware visibility to enrolled devices"
+      ]
+    },
+    {
+      "id": "T-INFO-05",
+      "category": "Information Disclosure",
+      "title": "User Email and Permission Information Leakage",
+      "description": "User emails and permission structures are stored in MongoDB and accessible via application queries. If database is compromised, full organizational structure is exposed.",
+      "severity": "Medium",
+      "likelihood": "Low",
+      "element": "DS-01",
+      "relatedAssets": ["ASSET-07"],
+      "mitigations": "Database credentials controlled via .env",
+      "remediationSteps": [
+        "Encrypt PII fields at rest",
+        "Implement field-level access controls",
+        "Audit database access patterns"
+      ]
+    },
+    {
+      "id": "T-INFO-06",
+      "category": "Information Disclosure",
+      "title": "Arbitrary Metric Fields Stored Without Validation",
+      "description": "Device metrics are stored with flexible schema. Attacker can inject arbitrary fields. Downstream systems may leak sensitive data if they assume trusted field names.",
+      "severity": "Medium",
+      "likelihood": "Medium",
+      "element": "P-03",
+      "relatedAssets": ["ASSET-06"],
+      "affectedDataFlow": ["DF-17"],
+      "linkedConcerns": ["UC-05"],
+      "mitigations": "None in current code; schema is flexible",
+      "remediationSteps": [
+        "Define strict metric schema",
+        "Whitelist allowed metric fields",
+        "Validate metrics before storage and consumption"
+      ]
+    },
+    {
+      "id": "T-DOS-01",
+      "category": "Denial of Service",
+      "title": "Rate Limit Bypass on Manager Routes",
+      "description": "Rate limits are applied but can be bypassed by rotating IP addresses or if upstream proxy forwards client IP incorrectly.",
+      "severity": "Medium",
+      "likelihood": "Medium",
+      "element": "P-01",
+      "relatedAssets": ["ASSET-03"],
+      "mitigations": "express-rate-limit middleware is configured",
+      "remediationSteps": [
+        "Verify proxy trust configuration is correct",
+        "Implement per-user rate limits after authentication",
+        "Add CAPTCHA for suspected attack patterns"
+      ]
+    },
+    {
+      "id": "T-DOS-02",
+      "category": "Denial of Service",
+      "title": "SQS Queue Saturation",
+      "description": "Inbound device messages are queued in SQS. Attacker with AWS IoT credentials can flood queue, exhausting receiver capacity.",
+      "severity": "High",
+      "likelihood": "Medium",
+      "element": "P-04",
+      "relatedAssets": ["ASSET-05"],
+      "affectedDataFlow": ["DF-06"],
+      "linkedConcerns": ["UC-03"],
+      "mitigations": "Poll speed and batch size are configurable",
+      "remediationSteps": [
+        "Set maximum queue depth limit",
+        "Implement exponential backoff for processing",
+        "Rate limit by thingID at MQTT ingress"
+      ]
+    },
+    {
+      "id": "T-DOS-03",
+      "category": "Denial of Service",
+      "title": "Firmware Download Flooding",
+      "description": "Attacker can trigger repeated firmware downloads from GitHub/GLG by issuing many data requests with different firmware IDs.",
+      "severity": "Medium",
+      "likelihood": "Medium",
+      "element": "P-05",
+      "relatedAssets": ["ASSET-01"],
+      "affectedDataFlow": ["DF-10", "DF-11"],
+      "mitigations": "Caching reduces downstream impact",
+      "remediationSteps": [
+        "Rate limit device data requests per thingID",
+        "Cache firmware lookups to prevent repeated GitHub/GLG calls",
+        "Monitor GitHub/GLG API quota usage"
+      ]
+    },
+    {
+      "id": "T-DOS-04",
+      "category": "Denial of Service",
+      "title": "Database Connection Exhaustion",
+      "description": "MongoDB connection pool can be exhausted by rapid requests from many clients. No per-connection timeout visible.",
+      "severity": "Medium",
+      "likelihood": "Medium",
+      "element": "DS-01",
+      "mitigations": "Connection pooling is implemented by Mongoose",
+      "remediationSteps": [
+        "Set connection timeout and idle timeout",
+        "Implement connection limits per user/API key",
+        "Add database query timeout limits"
+      ]
+    },
+    {
+      "id": "T-DOS-05",
+      "category": "Denial of Service",
+      "title": "S3 Bandwidth Exhaustion",
+      "description": "Presigned URLs are valid for duration. Attacker can trigger many parallel downloads from S3, exhausting bandwidth or incurring excessive costs.",
+      "severity": "Medium",
+      "likelihood": "Medium",
+      "element": "DS-03",
+      "relatedAssets": ["ASSET-01"],
+      "affectedDataFlow": ["DF-16"],
+      "mitigations": "Presigned URLs are short-lived",
+      "remediationSteps": [
+        "Set S3 request rate limits per IP",
+        "Monitor S3 egress metrics",
+        "Implement CloudFront caching for firmware"
+      ]
+    },
+    {
+      "id": "T-NONREP-01",
+      "category": "Repudiation",
+      "title": "Admin Actions Not Fully Audited",
+      "description": "Manager app logs requests but not all admin actions (user creation, permission changes, firmware registration) are explicitly audited to tamper-proof log.",
+      "severity": "Medium",
+      "likelihood": "Low",
+      "element": "P-01",
+      "relatedAssets": ["ASSET-07", "ASSET-01"],
+      "mitigations": "winston logger captures events but audit trail retention is unknown",
+      "remediationSteps": [
+        "Implement dedicated audit log with immutable storage",
+        "Log all permission changes with actor, timestamp, previous/new state",
+        "Log all firmware registration and assignment changes"
+      ]
+    },
+    {
+      "id": "T-NONREP-02",
+      "category": "Repudiation",
+      "title": "Device Message Origin Not Cryptographically Verified",
+      "description": "MQTT messages are validated for format but not cryptographically signed. Cannot prove device identity to external auditors.",
+      "severity": "Medium",
+      "likelihood": "Low",
+      "element": "P-03",
+      "relatedAssets": ["ASSET-05"],
+      "affectedDataFlow": ["DF-14"],
+      "mitigations": "AWS IoT certificate-based auth provides some trust boundary",
+      "remediationSteps": [
+        "Implement message signing at device level",
+        "Verify signatures in backend before processing",
+        "Log verified device identity with high confidence"
+      ]
+    }
+  ]
+}

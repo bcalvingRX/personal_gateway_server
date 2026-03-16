@@ -40,9 +40,8 @@ Use as inputs if present:
 - security-review/evidence/
 
 Create these directories if missing:
-- security-review/reviews/
 - security-review/findings/
-- security-review/summaries/
+- security-review/Summaries/
 - security-review/code-paths/
 - security-review/evidence/
 - security-review/notes/
@@ -83,16 +82,16 @@ Document the selected scopes and reasoning in the review artifact.
 Generate or update these files in the following exact locations:
 
 Reviews:
-- security-review/reviews/06_initial_architecture_attack_surface_analysis.md
-- security-review/reviews/07_authorization_access_control_review.md
-- security-review/reviews/08_inbound_device_message_trust_boundary_review.md
-- security-review/reviews/09_firmware_manifest_file_delivery_ota_review.md
+- security-review/06_initial_architecture_attack_surface_analysis.md
+- security-review/07_authorization_access_control_review.md
+- security-review/08_inbound_device_message_trust_boundary_review.md
+- security-review/09_firmware_manifest_file_delivery_ota_review.md
 
 Findings:
 - security-review/findings/90_consolidated_findings.md
 
 Summaries:
-- security-review/summaries/91_review_summary_for_management.md
+- security-review/Summaries/91_review_summary_for_management.md
 
 If additional supporting artifacts are useful during focused review, place them here:
 - security-review/code-paths/ for traced path documents
@@ -182,7 +181,7 @@ Requirements for code references:
 - do not paste large code blocks
 - use concise evidence references that help engineers validate the finding quickly
 
-Requirements for security-review/summaries/91_review_summary_for_management.md:
+Requirements for security-review/Summaries/91_review_summary_for_management.md:
 - concise and factual
 - suitable for a manager, auditor, or internal review record
 - include review objective, scopes completed, methods used, major code paths examined, confirmed findings count, uncertain concerns count, limitations, and recommended next steps

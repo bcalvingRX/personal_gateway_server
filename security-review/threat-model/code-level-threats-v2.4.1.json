@@ -1,0 +1,954 @@
+{
+  "version": "2.4.1",
+  "summary": {
+    "title": "RxFunction Gateway Server - Code-Level Threat Model",
+    "owner": "Brian Gray - Security Engineering",
+    "description": "Code-level threat model focusing on application implementation vulnerabilities discovered through static code analysis. Covers development mode bypasses, configuration issues, schema flexibility risks, and credential management gaps. Complements the system-level Cloud Infrastructure threat model.",
+    "id": 1
+  },
+  "detail": {
+    "contributors": [
+      "Brian Gray - Security Engineering",
+      "Code Review Analysis"
+    ],
+    "diagrams": [
+      {
+        "id": 1,
+        "title": "Application Code-Level Vulnerabilities",
+        "diagramType": "STRIDE",
+        "placeholder": "Code-level threat model for application implementation vulnerabilities",
+        "thumbnail": "./public/content/images/thumbnail.stride.jpg",
+        "version": "2.4.1",
+        "cells": [
+          {
+            "position": {
+              "x": 60,
+              "y": 60
+            },
+            "size": {
+              "width": 1800,
+              "height": 950
+            },
+            "attrs": {
+              "rect": {
+                "fill": "none",
+                "stroke": "blue",
+                "strokeDasharray": "5 5"
+              },
+              "label": {
+                "text": "Application Code Boundary\r\r\n(Node.js Express Services)",
+                "fill": "blue"
+              }
+            },
+            "visible": true,
+            "shape": "trust-boundary-box",
+            "zIndex": 0,
+            "id": "app-code-boundary",
+            "data": {
+              "type": "tm.BoundaryBox",
+              "name": "Application Code Boundary",
+              "description": "Node.js Express backend application code. This boundary encompasses all server-side business logic, middleware, authentication handlers, and data persistence layers.",
+              "hasOpenThreats": false,
+              "outOfScope": null
+            }
+          },
+          {
+            "position": {
+              "x": 100,
+              "y": 200
+            },
+            "size": {
+              "width": 160,
+              "height": 100
+            },
+            "attrs": {
+              "text": {
+                "text": "Manager App\r\r\n(Port 9422)"
+              },
+              "body": {
+                "stroke": "red",
+                "strokeWidth": 2.5,
+                "strokeDasharray": null
+              }
+            },
+            "visible": true,
+            "shape": "process",
+            "zIndex": 1,
+            "id": "manager-app",
+            "data": {
+              "type": "tm.Process",
+              "name": "Manager Application",
+              "description": "Express.js web application handling manager portal requests. Processes user authentication via useremail headers, session management, and authorization for administrative functions.",
+              "outOfScope": false,
+              "hasOpenThreats": true,
+              "isWebApplication": true,
+              "privilegeLevel": "System",
+              "threats": [
+                {
+                  "id": "code-threat-001",
+                  "title": "Development Mode Authentication Bypass",
+                  "status": "Open",
+                  "severity": "Critical",
+                  "type": "Elevation of Privilege",
+                  "description": "If application runs in development mode (NODE_ENV !== 'production'), middleware/input.middleware.js:injectMockUser() automatically injects test.admin1@rxfunction.com header, bypassing all authentication. Combined with hardcoded fallback in authtoken.middleware.js:verify(), attackers who can control NODE_ENV gain full admin access.",
+                  "mitigation": "Verify NODE_ENV is set to 'production' in deployment. Remove mock user injection entirely from production builds. Use build-time environment variable verification, not runtime checks.",
+                  "modelType": "STRIDE",
+                  "new": false,
+                  "number": 1,
+                  "score": 9.8,
+                  "cvss_v4_base": {
+                    "AV": "N",
+                    "AC": "L",
+                    "AT": "N",
+                    "PR": "N",
+                    "UI": "N",
+                    "VC": "N",
+                    "VI": "H",
+                    "VA": "N",
+                    "SC": "N",
+                    "SI": "H",
+                    "SA": "H",
+                    "vector_string": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:N/VI:H/VA:N/SC:N/SI:H/SA:H",
+                    "score": 9.8,
+                    "scored_date": "2026-03-16",
+                    "scored_by": "Brian Gray",
+                    "safety_related": false
+                  }
+                },
+                {
+                  "id": "code-threat-002",
+                  "title": "Request Body Logging in Production",
+                  "status": "Open",
+                  "severity": "High",
+                  "type": "Information Disclosure",
+                  "description": "Manager app (apps/manager-app.js line 65) logs req.body for debugging. If developers send API keys, authentication tokens, or credentials in request bodies during troubleshooting, they are captured in logs. Logs may be accessible to operators or stored insecurely.",
+                  "mitigation": "Remove body logging from production. Implement log sanitization middleware to mask sensitive fields (auth headers, tokens, passwords). Use structured logging with field-level redaction.",
+                  "modelType": "STRIDE",
+                  "new": false,
+                  "number": 2,
+                  "score": 7.5,
+                  "cvss_v4_base": {
+                    "AV": "N",
+                    "AC": "L",
+                    "AT": "N",
+                    "PR": "N",
+                    "UI": "N",
+                    "VC": "H",
+                    "VI": "N",
+                    "VA": "N",
+                    "SC": "N",
+                    "SI": "N",
+                    "SA": "N",
+                    "vector_string": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:N/VA:N/SC:N/SI:N/SA:N",
+                    "score": 7.5,
+                    "scored_date": "2026-03-16",
+                    "scored_by": "Brian Gray",
+                    "safety_related": false
+                  }
+                },
+                {
+                  "id": "code-threat-003",
+                  "title": "Information Disclosure via Error Messages",
+                  "status": "Open",
+                  "severity": "Medium",
+                  "type": "Information Disclosure",
+                  "description": "Error handler (middleware/error-handler.middleware.js line 7) returns err.message directly to HTTP clients. Internal error details such as database operation failures, missing records, or system state are exposed to unauthenticated users.",
+                  "mitigation": "Return generic error messages to clients ('An error occurred'). Log detailed errors server-side only. Implement error classification to avoid leaking system internals.",
+                  "modelType": "STRIDE",
+                  "new": false,
+                  "number": 3,
+                  "score": 5.3,
+                  "cvss_v4_base": {
+                    "AV": "N",
+                    "AC": "L",
+                    "AT": "N",
+                    "PR": "N",
+                    "UI": "N",
+                    "VC": "H",
+                    "VI": "N",
+                    "VA": "N",
+                    "SC": "N",
+                    "SI": "N",
+                    "SA": "N",
+                    "vector_string": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:N/VA:N/SC:N/SI:N/SA:N",
+                    "score": 5.3,
+                    "scored_date": "2026-03-16",
+                    "scored_by": "Brian Gray",
+                    "safety_related": false
+                  }
+                }
+              ],
+              "threatFrequency": {
+                "spoofing": 0,
+                "tampering": 0,
+                "repudiation": 0,
+                "informationDisclosure": 2,
+                "denialOfService": 0,
+                "elevationOfPrivilege": 1
+              }
+            }
+          },
+          {
+            "position": {
+              "x": 440,
+              "y": 200
+            },
+            "size": {
+              "width": 160,
+              "height": 100
+            },
+            "attrs": {
+              "text": {
+                "text": "API App\r\r\n(Port 9443)"
+              },
+              "body": {
+                "stroke": "red",
+                "strokeWidth": 2.5,
+                "strokeDasharray": null
+              }
+            },
+            "visible": true,
+            "shape": "process",
+            "zIndex": 1,
+            "id": "api-app",
+            "data": {
+              "type": "tm.Process",
+              "name": "API Application",
+              "description": "Express.js API service handling automation endpoints. Validates API keys from authorization header. Processes provisioning and dirty-system queries from external automation clients.",
+              "outOfScope": false,
+              "hasOpenThreats": true,
+              "isWebApplication": true,
+              "privilegeLevel": "System",
+              "threats": [
+                {
+                  "id": "code-threat-004",
+                  "title": "CORS Misconfiguration in Production",
+                  "status": "Open",
+                  "severity": "Medium",
+                  "type": "Information Disclosure",
+                  "description": "API app (apps/api-app.js line 15-18) sets CORS origin to '*' in non-development mode. Allows any website to make cross-origin requests to the API. Combined with GET-only design, less severe, but enables information disclosure if attackers trigger GET requests that return sensitive data.",
+                  "mitigation": "Restrict CORS origin to known management domains. Whitelist specific origins instead of wildcard. Consider removing CORS entirely if clients are internal.",
+                  "modelType": "STRIDE",
+                  "new": false,
+                  "number": 4,
+                  "score": 5.7,
+                  "cvss_v4_base": {
+                    "AV": "N",
+                    "AC": "L",
+                    "AT": "N",
+                    "PR": "N",
+                    "UI": "N",
+                    "VC": "H",
+                    "VI": "N",
+                    "VA": "N",
+                    "SC": "N",
+                    "SI": "N",
+                    "SA": "N",
+                    "vector_string": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:N/VA:N/SC:N/SI:N/SA:N",
+                    "score": 5.7,
+                    "scored_date": "2026-03-16",
+                    "scored_by": "Brian Gray",
+                    "safety_related": false
+                  }
+                },
+                {
+                  "id": "code-threat-005",
+                  "title": "API Key Lifecycle Management Gaps",
+                  "status": "Open",
+                  "severity": "High",
+                  "type": "Tampering",
+                  "description": "API keys are hashed and stored in database, but no rotation, expiration, or key scoping is visible in code. Compromised keys cannot be revoked without database access. No per-key rate limiting prevents brute-force attacks on the hash. MD5 hashing is weak for key material.",
+                  "mitigation": "Implement API key expiration and rotation policies. Add per-key rate limits and request quotas. Use modern key derivation functions (bcrypt, argon2, PBKDF2) instead of MD5. Add key audit logging for all API calls.",
+                  "modelType": "STRIDE",
+                  "new": false,
+                  "number": 5,
+                  "score": 7.1,
+                  "cvss_v4_base": {
+                    "AV": "N",
+                    "AC": "L",
+                    "AT": "N",
+                    "PR": "N",
+                    "UI": "N",
+                    "VC": "N",
+                    "VI": "H",
+                    "VA": "N",
+                    "SC": "N",
+                    "SI": "N",
+                    "SA": "N",
+                    "vector_string": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:N/VI:H/VA:N/SC:N/SI:N/SA:N",
+                    "score": 7.1,
+                    "scored_date": "2026-03-16",
+                    "scored_by": "Brian Gray",
+                    "safety_related": false
+                  }
+                },
+                {
+                  "id": "code-threat-006",
+                  "title": "Request Body Logging in API Service",
+                  "status": "Open",
+                  "severity": "Medium",
+                  "type": "Information Disclosure",
+                  "description": "API service (apps/api-app.js line 32) logs request body globally via middleware. If credentials, API keys, or sensitive automation parameters are sent in request bodies, they are captured in application logs.",
+                  "mitigation": "Implement log sanitization for sensitive fields. Use structured logging with field-level filtering. Disable body logging and switch to request ID logging for linking.",
+                  "modelType": "STRIDE",
+                  "new": false,
+                  "number": 6,
+                  "score": 6.1,
+                  "cvss_v4_base": {
+                    "AV": "N",
+                    "AC": "L",
+                    "AT": "N",
+                    "PR": "N",
+                    "UI": "N",
+                    "VC": "H",
+                    "VI": "N",
+                    "VA": "N",
+                    "SC": "N",
+                    "SI": "N",
+                    "SA": "N",
+                    "vector_string": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:N/VA:N/SC:N/SI:N/SA:N",
+                    "score": 6.1,
+                    "scored_date": "2026-03-16",
+                    "scored_by": "Brian Gray",
+                    "safety_related": false
+                  }
+                }
+              ],
+              "threatFrequency": {
+                "spoofing": 0,
+                "tampering": 1,
+                "repudiation": 0,
+                "informationDisclosure": 2,
+                "denialOfService": 0,
+                "elevationOfPrivilege": 0
+              }
+            }
+          },
+          {
+            "position": {
+              "x": 780,
+              "y": 200
+            },
+            "size": {
+              "width": 160,
+              "height": 100
+            },
+            "attrs": {
+              "text": {
+                "text": "Session/Auth\r\r\nMiddleware"
+              },
+              "body": {
+                "stroke": "red",
+                "strokeWidth": 2.5,
+                "strokeDasharray": null
+              }
+            },
+            "visible": true,
+            "shape": "process",
+            "zIndex": 1,
+            "id": "auth-middleware",
+            "data": {
+              "type": "tm.Process",
+              "name": "Authentication & Session Middleware",
+              "description": "Express middleware handling user identity establishment, session validation, and permission enforcement. Implements reqCookie(), verify(), and authorization checks before route handlers.",
+              "outOfScope": false,
+              "hasOpenThreats": true,
+              "isWebApplication": false,
+              "privilegeLevel": "System",
+              "threats": [
+                {
+                  "id": "code-threat-007",
+                  "title": "Session Cookie Security Properties",
+                  "status": "Open",
+                  "severity": "Medium",
+                  "type": "Information Disclosure",
+                  "description": "Manager app sets session cookie with secure: true and sameSite: 'strict', but HTTPOnly flag visibility is unclear in code review. If HTTPOnly is not set, JavaScript-based XSS vulnerabilities allow attackers to steal session cookies.",
+                  "mitigation": "Explicitly set HTTPOnly: true on session cookies. Verify flag is applied in all environments. Implement CSP headers to prevent XSS. Add SameSite=Strict for CSRF protection.",
+                  "modelType": "STRIDE",
+                  "new": false,
+                  "number": 7,
+                  "score": 5.9,
+                  "cvss_v4_base": {
+                    "AV": "N",
+                    "AC": "H",
+                    "AT": "P",
+                    "PR": "N",
+                    "UI": "Y",
+                    "VC": "H",
+                    "VI": "N",
+                    "VA": "N",
+                    "SC": "N",
+                    "SI": "N",
+                    "SA": "N",
+                    "vector_string": "CVSS:4.0/AV:N/AC:H/AT:P/PR:N/UI:Y/VC:H/VI:N/VA:N/SC:N/SI:N/SA:N",
+                    "score": 5.9,
+                    "scored_date": "2026-03-16",
+                    "scored_by": "Brian Gray",
+                    "safety_related": false
+                  }
+                },
+                {
+                  "id": "code-threat-008",
+                  "title": "Mock User Header Injection Detection",
+                  "status": "Open",
+                  "severity": "Medium",
+                  "type": "Spoofing",
+                  "description": "Development mode check (NODE_ENV === 'development') can be bypassed if environment variables are misconfigured or if the check uses loose equality. Additionally, even in non-development mode, the fallback in verify() accepts development user if useremail is undefined and NODE_ENV check fails.",
+                  "mitigation": "Use strict equality (===) for environment checks. Remove development fallbacks entirely. Use build-time Constants instead of runtime environment variables for security features.",
+                  "modelType": "STRIDE",
+                  "new": false,
+                  "number": 8,
+                  "score": 6.3,
+                  "cvss_v4_base": {
+                    "AV": "N",
+                    "AC": "L",
+                    "AT": "N",
+                    "PR": "N",
+                    "UI": "N",
+                    "VC": "N",
+                    "VI": "H",
+                    "VA": "N",
+                    "SC": "N",
+                    "SI": "N",
+                    "SA": "N",
+                    "vector_string": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:N/VI:H/VA:N/SC:N/SI:N/SA:N",
+                    "score": 6.3,
+                    "scored_date": "2026-03-16",
+                    "scored_by": "Brian Gray",
+                    "safety_related": false
+                  }
+                }
+              ],
+              "threatFrequency": {
+                "spoofing": 1,
+                "tampering": 0,
+                "repudiation": 0,
+                "informationDisclosure": 1,
+                "denialOfService": 0,
+                "elevationOfPrivilege": 0
+              }
+            }
+          },
+          {
+            "position": {
+              "x": 1120,
+              "y": 200
+            },
+            "size": {
+              "width": 160,
+              "height": 100
+            },
+            "attrs": {
+              "text": {
+                "text": "MongoDB"
+              },
+              "topLine": {
+                "stroke": "red",
+                "strokeWidth": 2.5,
+                "strokeDasharray": null
+              },
+              "bottomLine": {
+                "stroke": "red",
+                "strokeWidth": 2.5,
+                "strokeDasharray": null
+              }
+            },
+            "visible": true,
+            "shape": "store",
+            "zIndex": 1,
+            "id": "mongodb",
+            "data": {
+              "type": "tm.Store",
+              "name": "MongoDB",
+              "description": "Primary database storing users, permissions, systems, devices, firmware metadata, and metrics. Multiple collections use strict: false allowing arbitrary field injection.",
+              "outOfScope": false,
+              "hasOpenThreats": true,
+              "isALog": true,
+              "storesCredentials": true,
+              "isEncrypted": true,
+              "threats": [
+                {
+                  "id": "code-threat-009",
+                  "title": "Flexible MongoDB Schema - Field Injection",
+                  "status": "Open",
+                  "severity": "High",
+                  "type": "Tampering",
+                  "description": "Multiple schemas use Mongoose strict: false (system-metrics-template.js, device-template.js, state-record-template.js, firmware-template.js). Attackers can inject arbitrary fields into documents. Downstream systems consuming these records may process unexpected fields, enabling injection attacks, privilege escalation via injected permission fields, or data poisoning of metrics.",
+                  "mitigation": "Set strict: true on all schemas. Explicitly whitelist allowed fields. Remove minimize: false unless critical for application. Add schema validation at application layer before database writes.",
+                  "modelType": "STRIDE",
+                  "new": false,
+                  "number": 9,
+                  "score": 6.9,
+                  "cvss_v4_base": {
+                    "AV": "N",
+                    "AC": "L",
+                    "AT": "N",
+                    "PR": "L",
+                    "UI": "N",
+                    "VC": "N",
+                    "VI": "H",
+                    "VA": "N",
+                    "SC": "N",
+                    "SI": "H",
+                    "SA": "N",
+                    "vector_string": "CVSS:4.0/AV:N/AC:L/AT:N/PR:L/UI:N/VC:N/VI:H/VA:N/SC:N/SI:H/SA:N",
+                    "score": 6.9,
+                    "scored_date": "2026-03-16",
+                    "scored_by": "Brian Gray",
+                    "safety_related": false
+                  }
+                },
+                {
+                  "id": "code-threat-010",
+                  "title": "Broad Metrics Schema Flexibility",
+                  "status": "Open",
+                  "severity": "Medium",
+                  "type": "Tampering",
+                  "description": "Device metrics are accepted with minimal schema validation (mqtt-input.middleware.js validates only that record is a non-null object, not an array). system-metrics-template.js has strict: false. Devices can inject arbitrary fields into metrics. Reporting systems or analytics consuming metrics may process unexpected fields unsafely.",
+                  "mitigation": "Define strict metrics schema with whitelisted fields. Validate metrics structure before storage. Sanitize metrics fields when consumed by reporting systems. Add metrics schema versioning.",
+                  "modelType": "STRIDE",
+                  "new": false,
+                  "number": 10,
+                  "score": 5.1,
+                  "cvss_v4_base": {
+                    "AV": "N",
+                    "AC": "L",
+                    "AT": "N",
+                    "PR": "L",
+                    "UI": "N",
+                    "VC": "N",
+                    "VI": "H",
+                    "VA": "N",
+                    "SC": "N",
+                    "SI": "N",
+                    "SA": "N",
+                    "vector_string": "CVSS:4.0/AV:N/AC:L/AT:N/PR:L/UI:N/VC:N/VI:H/VA:N/SC:N/SI:N/SA:N",
+                    "score": 5.1,
+                    "scored_date": "2026-03-16",
+                    "scored_by": "Brian Gray",
+                    "safety_related": false
+                  }
+                }
+              ],
+              "threatFrequency": {
+                "spoofing": 0,
+                "tampering": 2,
+                "repudiation": 0,
+                "informationDisclosure": 0,
+                "denialOfService": 0,
+                "elevationOfPrivilege": 0
+              }
+            }
+          },
+          {
+            "position": {
+              "x": 100,
+              "y": 500
+            },
+            "size": {
+              "width": 150,
+              "height": 80
+            },
+            "attrs": {
+              "text": {
+                "text": "Developer"
+              },
+              "body": {
+                "stroke": "#333333",
+                "strokeWidth": 1.5,
+                "strokeDasharray": null
+              }
+            },
+            "visible": true,
+            "shape": "actor",
+            "zIndex": 1,
+            "id": "developer",
+            "data": {
+              "type": "tm.Actor",
+              "name": "Developer/Operator",
+              "description": "Internal developers or system operators who can control environment variables, access logs, configure deployment, or commit code changes.",
+              "outOfScope": false,
+              "hasOpenThreats": false,
+              "providesAuthentication": false,
+              "threats": []
+            }
+          },
+          {
+            "position": {
+              "x": 450,
+              "y": 500
+            },
+            "size": {
+              "width": 150,
+              "height": 80
+            },
+            "attrs": {
+              "text": {
+                "text": "External Client"
+              },
+              "body": {
+                "stroke": "#333333",
+                "strokeWidth": 1.5,
+                "strokeDasharray": null
+              }
+            },
+            "visible": true,
+            "shape": "actor",
+            "zIndex": 1,
+            "id": "external-client",
+            "data": {
+              "type": "tm.Actor",
+              "name": "External Automation Client",
+              "description": "External systems making API calls to the API application using provisioned API keys.",
+              "outOfScope": false,
+              "hasOpenThreats": false,
+              "providesAuthentication": false,
+              "threats": []
+            }
+          },
+          {
+            "position": {
+              "x": 800,
+              "y": 500
+            },
+            "size": {
+              "width": 150,
+              "height": 80
+            },
+            "attrs": {
+              "text": {
+                "text": "GitHub Repository"
+              },
+              "body": {
+                "stroke": "#333333",
+                "strokeWidth": 1.5,
+                "strokeDasharray": null
+              }
+            },
+            "visible": true,
+            "shape": "actor",
+            "zIndex": 1,
+            "id": "github-repo",
+            "data": {
+              "type": "tm.Actor",
+              "name": "GitHub Repository",
+              "description": "Source code repository containing application code, test fixtures, and .devcontainer directory with hardcoded test credentials.",
+              "outOfScope": false,
+              "hasOpenThreats": false,
+              "providesAuthentication": false,
+              "threats": []
+            }
+          },
+          {
+            "position": {
+              "x": 1200,
+              "y": 500
+            },
+            "size": {
+              "width": 150,
+              "height": 80
+            },
+            "attrs": {
+              "text": {
+                "text": "Attacker on\r\r\nInternal Network"
+              },
+              "body": {
+                "stroke": "#333333",
+                "strokeWidth": 1.5,
+                "strokeDasharray": null
+              }
+            },
+            "visible": true,
+            "shape": "actor",
+            "zIndex": 1,
+            "id": "internal-attacker",
+            "data": {
+              "type": "tm.Actor",
+              "name": "Attacker on Internal Network",
+              "description": "Malicious internal user or compromised internal system with access to repository, environment variables, or logs containing test credentials.",
+              "outOfScope": false,
+              "hasOpenThreats": false,
+              "providesAuthentication": false,
+              "threats": []
+            }
+          },
+          {
+            "shape": "flow",
+            "attrs": {
+              "line": {
+                "stroke": "red",
+                "strokeWidth": 2.5,
+                "targetMarker": {
+                  "name": "block"
+                },
+                "sourceMarker": {
+                  "name": ""
+                },
+                "strokeDasharray": null
+              }
+            },
+            "width": 200,
+            "height": 100,
+            "zIndex": 10,
+            "connector": "smooth",
+            "data": {
+              "type": "tm.Flow",
+              "name": "Environment Control",
+              "description": "Developers control NODE_ENV and application configuration. Misconfiguration or compromise enables development mode activation.",
+              "outOfScope": false,
+              "hasOpenThreats": true,
+              "isBidirectional": false,
+              "isEncrypted": false,
+              "isPublicNetwork": false,
+              "protocol": "Environment Variables",
+              "threats": [
+                {
+                  "id": "flow-threat-001",
+                  "title": "Development Mode Activation",
+                  "status": "Open",
+                  "severity": "Critical",
+                  "type": "Spoofing",
+                  "description": "If NODE_ENV can be controlled or misset, authentication bypasses are triggered, allowing unauthenticated access to all manager functions.",
+                  "mitigation": "Use immutable configuration deployment. Verify NODE_ENV at application startup and fail hard if not 'production'. Remove all development-mode code from production builds.",
+                  "modelType": "STRIDE",
+                  "new": false,
+                  "number": 11,
+                  "score": 9.8,
+                  "cvss_v4_base": {
+                    "AV": "N",
+                    "AC": "L",
+                    "AT": "N",
+                    "PR": "N",
+                    "UI": "N",
+                    "VC": "N",
+                    "VI": "H",
+                    "VA": "N",
+                    "SC": "N",
+                    "SI": "H",
+                    "SA": "H",
+                    "vector_string": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:N/VI:H/VA:N/SC:N/SI:H/SA:H",
+                    "score": 9.8,
+                    "scored_date": "2026-03-16",
+                    "scored_by": "Brian Gray",
+                    "safety_related": false
+                  }
+                }
+              ]
+            },
+            "labels": [
+              "Environment Control"
+            ],
+            "id": "flow-dev-env",
+            "source": {
+              "cell": "developer",
+              "port": null
+            },
+            "target": {
+              "cell": "manager-app",
+              "port": null
+            }
+          },
+          {
+            "shape": "flow",
+            "attrs": {
+              "line": {
+                "stroke": "red",
+                "strokeWidth": 2.5,
+                "targetMarker": {
+                  "name": "block"
+                },
+                "sourceMarker": {
+                  "name": ""
+                },
+                "strokeDasharray": null
+              }
+            },
+            "width": 200,
+            "height": 100,
+            "zIndex": 10,
+            "connector": "smooth",
+            "data": {
+              "type": "tm.Flow",
+              "name": "API Requests",
+              "description": "External automation clients make API calls with authentication tokens. API keys can be compromised.",
+              "outOfScope": false,
+              "hasOpenThreats": true,
+              "isBidirectional": false,
+              "isEncrypted": true,
+              "isPublicNetwork": true,
+              "protocol": "HTTPS",
+              "threats": [
+                {
+                  "id": "flow-threat-002",
+                  "title": "API Key Compromise or Reuse",
+                  "status": "Open",
+                  "severity": "High",
+                  "type": "Spoofing",
+                  "description": "API keys with no expiration, rotation, or rate limiting can be reused indefinitely if compromised. No scope limiting means single key grants access to all API endpoints.",
+                  "mitigation": "Implement key rotation and expiration. Add per-key scope limiting and rate limits. Use modern key derivation functions. Monitor key usage for anomalous patterns.",
+                  "modelType": "STRIDE",
+                  "new": false,
+                  "number": 12,
+                  "score": 7.1,
+                  "cvss_v4_base": {
+                    "AV": "N",
+                    "AC": "L",
+                    "AT": "N",
+                    "PR": "N",
+                    "UI": "N",
+                    "VC": "N",
+                    "VI": "H",
+                    "VA": "N",
+                    "SC": "N",
+                    "SI": "N",
+                    "SA": "N",
+                    "vector_string": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:N/VI:H/VA:N/SC:N/SI:N/SA:N",
+                    "score": 7.1,
+                    "scored_date": "2026-03-16",
+                    "scored_by": "Brian Gray",
+                    "safety_related": false
+                  }
+                }
+              ]
+            },
+            "labels": [
+              "API Requests"
+            ],
+            "id": "flow-client-api",
+            "source": {
+              "cell": "external-client",
+              "port": null
+            },
+            "target": {
+              "cell": "api-app",
+              "port": null
+            }
+          },
+          {
+            "shape": "flow",
+            "attrs": {
+              "line": {
+                "stroke": "red",
+                "strokeWidth": 2.5,
+                "targetMarker": {
+                  "name": "block"
+                },
+                "sourceMarker": {
+                  "name": ""
+                },
+                "strokeDasharray": null
+              }
+            },
+            "width": 200,
+            "height": 100,
+            "zIndex": 10,
+            "connector": "smooth",
+            "data": {
+              "type": "tm.Flow",
+              "name": "Repository Access",
+              "description": "Source code repository contains .devcontainer with hardcoded test credentials, API keys, and test user data.",
+              "outOfScope": false,
+              "hasOpenThreats": true,
+              "isBidirectional": false,
+              "isEncrypted": true,
+              "isPublicNetwork": false,
+              "protocol": "Git",
+              "threats": [
+                {
+                  "id": "flow-threat-003",
+                  "title": "Test Credentials in Repository",
+                  "status": "Open",
+                  "severity": "High",
+                  "type": "Information Disclosure",
+                  "description": "Repository contains .devcontainer/testdb/ with hardcoded API key (MD5 hash of 'admin': 202cb962ac59075b964b07152d234b70) and test user emails (test.admin1@rxfunction.com, etc.). If repository is cloned or accessed by attackers, credentials are compromised.",
+                  "mitigation": "Remove all test credentials from version control. Use .gitignore to exclude fixtures. Generate test data dynamically in CI/CD. Store secrets in secrets manager, never in code.",
+                  "modelType": "STRIDE",
+                  "new": false,
+                  "number": 13,
+                  "score": 7.3,
+                  "cvss_v4_base": {
+                    "AV": "N",
+                    "AC": "L",
+                    "AT": "N",
+                    "PR": "N",
+                    "UI": "N",
+                    "VC": "H",
+                    "VI": "N",
+                    "VA": "N",
+                    "SC": "N",
+                    "SI": "N",
+                    "SA": "N",
+                    "vector_string": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:N/VA:N/SC:N/SI:N/SA:N",
+                    "score": 7.3,
+                    "scored_date": "2026-03-16",
+                    "scored_by": "Brian Gray",
+                    "safety_related": false
+                  }
+                }
+              ]
+            },
+            "labels": [
+              "Repository Access"
+            ],
+            "id": "flow-repo",
+            "source": {
+              "cell": "github-repo",
+              "port": null
+            },
+            "target": {
+              "cell": "internal-attacker",
+              "port": null
+            }
+          },
+          {
+            "shape": "flow",
+            "attrs": {
+              "line": {
+                "stroke": "red",
+                "strokeWidth": 2.5,
+                "targetMarker": {
+                  "name": "block"
+                },
+                "sourceMarker": {
+                  "name": "block"
+                },
+                "strokeDasharray": null
+              }
+            },
+            "width": 200,
+            "height": 100,
+            "zIndex": 10,
+            "connector": "smooth",
+            "data": {
+              "type": "tm.Flow",
+              "name": "Database Operations",
+              "description": "Applications read and write to MongoDB. Flexible schemas allow injection of arbitrary fields.",
+              "outOfScope": false,
+              "hasOpenThreats": true,
+              "isBidirectional": true,
+              "isEncrypted": true,
+              "isPublicNetwork": false,
+              "protocol": "MongoDB Wire",
+              "threats": []
+            },
+            "labels": [
+              "Database Operations"
+            ],
+            "id": "flow-db",
+            "source": {
+              "cell": "manager-app",
+              "port": null
+            },
+            "target": {
+              "cell": "mongodb",
+              "port": null
+            }
+          }
+        ]
+      }
+    ],
+    "diagramTop": 1,
+    "reviewer": "Brian Gray",
+    "threatTop": 13
+  }
+}
