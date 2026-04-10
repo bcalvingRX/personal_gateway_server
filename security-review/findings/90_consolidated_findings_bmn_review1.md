@@ -3,20 +3,6 @@
 ## Executive summary
 This consolidated record is derived from the repository-backed review artifacts generated for architecture/attack surface, authorization/access control, inbound device-message trust boundaries, and firmware/OTA orchestration. It does not introduce new findings. Confirmed findings below are limited to issues supported by current repository code. Uncertain concerns remain separated and require deployment or runtime validation.
 
-## Integration summary
-- Source: `90_consolidated_findings_bmn_review1.md` dated 2026-04-02
-- Major agreements:
-  - Engineering agrees with `CF-02`, `CF-03`, `CF-04`, and `CF-05`, with implementation context and operational caveats.
-  - Engineering states `CF-01` depends on upstream Cloudflare, NGINX, `oauth2-proxy`, and Redis session controls not present in this repository.
-  - Engineering disputes the interpretation in `CF-06` and points to existing smoke-test coverage for GitHub and GLG download flows.
-- Open actions:
-  - Validate the external identity and header-overwrite path described for `CF-01`.
-  - Replace or constrain the first-user bootstrap path in `CF-02`.
-  - Reclassify write-capable routes in `CF-03`.
-  - Add default entitlement checks for firmware and manifest retrieval in `CF-04`.
-  - Add backend firmware integrity verification in `CF-05`.
-  - Reconcile the `CF-06` code-path interpretation with implementation and smoke-test evidence.
-
 ## Confirmed findings
 
 ### Finding ID: CF-01
@@ -47,11 +33,33 @@ Source review artifact(s):
 - `07_authorization_access_control_review.md`
 
 ### Finding ID: CF-01 Engineer review
-Engineering states that external requests are intended to pass through Cloudflare, the Kubernetes load balancer, frontend NGINX, and `oauth2-proxy`, with Redis-backed session validation and NGINX header overwrite for the authorized user/email context before requests reach the backend. Engineering also notes this protection depends on the integrity of the cluster and trusted injection path.
-Status: Needs follow-up
-Action owner: security
-Next step: Validate the deployed ingress, `oauth2-proxy`, Redis session, and NGINX header-overwrite controls that engineering identified.
+This finding correctly identifies both dependencies and assumptions that the backend W-200 server makes with regard to the rest of the RxFunction cloud infrastructure. 
+All requests from external clients, external meaning clients outside of the Kubernetes cluster in which this server is running in, are routed through a flow that is intended to mitigate the findings in CF-01. Below is a simplified outline of that flow:
+External client (port 443 - standard HTTPS) ->
+port 8081 internal targetPort of load balancer, forwarding into the pod (https://github.com/RxFunction/walkasins-gateway.git - rxfunction-app-lb-service.yaml - L18 (routes to frontend deployment rxfunction-app-deployment.yaml L25)) ->
+location / (https://github.com/RxFunction/walkasins-gateway-frontend.git - nginx.conf.template - L74) ->
+127.0.0.1:4180:/oauth2/auth (https://github.com/RxFunction/walkasins-gateway-frontend.git - nginx.conf.template - L39) -> 
+127.0.0.1:4180:/oauth2/auth (https://github.com/RxFunction/walkasins-gateway.git - rxfunction-app-deployment.yaml L40) ->
+Session cookie checked against Redis rxfunction-app-deployment.yaml L59 (redis://rxfunction-gw-redis:6379 (https://github.com/RxFunction/walkasins-gateway.git - redis-deployment.yaml) ->
+ON FAILURE:
+returns 401 -> directed to /oauth2/start (https://github.com/RxFunction/walkasins-gateway-frontend.git - nginx.conf.template - L76) -> 
+http://127.0.0.1:4180:/oauth2/start (https://github.com/RxFunction/walkasins-gateway-frontend.git - nginx.conf.template - L33) -> 
+127.0.0.1:4180:/oauth2/start (https://github.com/RxFunction/walkasins-gateway.git - rxfunction-app-deployment.yaml L40) ->
+https://login.microsoftonline.com (Azure - redirects to https://walkasins.rxfunction.app/api/auth/response (https://github.com/RxFunction/walkasins-gateway.git - rxfunction-app-deployment.yaml L62)) ->
+/api/auth/response (https://github.com/RxFunction/walkasins-gateway-frontend.git - nginx.conf.template - L53) -> 
+/oauth2/callback (oauth2-proxy - Sets up session (exchanges auth tokens/validates OIDC token/checks email domain/creates redis session keys/sets session cookie/sets redirects https://github.com/RxFunction/walkasins-gateway.git - rxfunction-app-deployment.yaml L40)) ->
+redirects logged in user to backend /landing - Go to 'ON SUCCESS' below
 
+ON SUCCESS:
+All subsequent requests go through /oauth2/auth - Session cookie checked against redis (https://github.com/RxFunction/walkasins-gateway.git - redis-deployment.yaml).
+CRITICAL - nginx forwards authorized email/user/access token to backend requests, overwriting user provided values
+user/email overwriting logic is here: L78, L79, L80–82 (https://github.com/RxFunction/walkasins-gateway-frontend.git - nginx.conf.template)
+
+
+Bonus info - all external requests must also pass mutual authentication at L19 of nginx.conf.template. The CA that authenticates the connecting client
+is set to the cloudflare CA, forcing external requests to first go through the cloudflare proxy and prevent any requests directly to the publically facing load balancer.
+
+Assumptions - This flow is only secure as long as the cluster itself is secure. A compromised kubernetes cluster can bypass the email header injection point and skip OAUTH checks as well. 
 
 ### Finding ID: CF-02
 Title: First-user bootstrap assigns administrative access when the user database is empty
@@ -76,11 +84,9 @@ Source review artifact(s):
 - `06_initial_architecture_attack_surface_analysis.md`
 - `07_authorization_access_control_review.md`
 
+
 ### Finding ID: CF-02 Engineer review
-Engineering agrees this is an explicit bootstrap sequence and characterizes it as a preliminary measure that should be replaced with a more controlled bootstrap or provisioning process, supported by deployment and initial-provisioning procedures.
-Status: Accepted
-Action owner: engineering
-Next step: Replace the implicit first-user bootstrap path with a controlled provisioning flow and document the deployment procedure.
+This finding correctly identifies a explicit bootstrap sequence. This was a preliminary measure that can possibly be replaced with a more controlled bootstram sequence, as mentioned in the above remediations. Recommend backend logic and development of deployment/initial provisioning protocols.
 
 
 ### Finding ID: CF-03
@@ -117,11 +123,7 @@ Source review artifact(s):
 - `07_authorization_access_control_review.md`
 
 ### Finding ID: CF-03 Engineer review
-Engineering agrees the current permission model does not match the sensitivity of the affected firmware and system-management actions and recommends implementing the proposed permission reclassification.
-Status: Accepted
-Action owner: engineering
-Next step: Reclassify the identified mutating routes to non-view permissions and confirm the deployed role mappings match the intended separation.
-
+This finding correctly identifies a mismatch between intuitive access controls for firmware controls. The recommended remediation should be performed.
 
 ### Finding ID: CF-04
 Title: Inbound device `data` requests are served by identifier without gateway-to-fleet entitlement checks
@@ -156,10 +158,21 @@ Source review artifact(s):
 - `09_firmware_manifest_file_delivery_ota_review.md`
 
 ### Finding ID: CF-04 Engineer review
-Engineering states that AWS IoT Core registration, thing-group policy, topic restrictions, and AWS Rules are intended to prevent spoofed gateway identity on ingress. Engineering also explains the current broader retrieval behavior supports manufacturing, provisioning, trial, development, and replacement workflows, but agrees default entitlement checks should be added with a separate broader-access mode for approved gateways or fleets.
-Status: Accepted
-Action owner: engineering
-Next step: Add default gateway-to-fleet entitlement checks and define the explicit exception model for approved broader-access workflows.
+This finding highlights both an improvement in security as well as a security dependency between AWS IoT Core and the RxFunction backend server. 
+
+Dependency (ClientID/ThingID):
+The thingID field of incoming MQTT messages is used by the backend server to log and route various requests. Just-In-Time AWS thing registration is leveraged to assign RxFunction approved in-field gateways to thingIDs and add the clients certificate to known and approved devices. As part of this registration, the RxFunction gateway is assigned to the thing group "gateway" that restrics the gateway, only allowing it to publish/subscribe on designated topics. The subscribe topics are further restricted such that the registered client certificate can only subscribe to topics that match its registered thingID (present in the topic name). Publishing, which is the same topic across all in-field devices, come in on a disginated topic that has a AWS Rule attached. Each topic has its own rule, but an example of a rule for the gateawy/send/cbor topic is:
+
+SELECT aws_lambda("arn:aws:lambda:us-east-2:637423169020:function:cborToJSON:Test", {"payload": encode(*, 'base64'), "topic": topic(), "gateway": clientid()}).message AS payload FROM 'gateway/send/cbor'
+
+The "gateway" field is directly assigned to the AWS clientID, from the AWS IoT Core registration. This overwrites any client supplied "gateway" field and prevents spoofing of client IDs to the backend server. The AWS Lambda function cborToJSON will convert and republish the incoming payload to an AWS SQS queue, which the backend server moniters and pulls requests out of.
+
+To ensure this pathway remains secure, proper protection of any new topics or pathways where gateway devices can communicate with the backend is essential. This can be done through our in-place AWS IoT Core Rules as described above.
+
+Improvement:
+The second half of this finding relates to the restriction of registered devices from requesting content unrelated to their forseen operation. Currently, a registered gateway may download any manifest or firmware file that the backend server provides. The firmware files themselves and properly protected and the manifest files are a list of hashes - neither pose a security concern by themselves. This also ensures that gateway devices in the field have some autonimity with regards to how they manage their in-field systems. To expand, gateways that are used on manufacturing floors, clinical trials, development environemnts, or replacement flows can request firmware files preematively from backend services without waiting for backend service syncronization or out-of-band communcation. 
+
+Still, the finding clearly outlines a trust boundary that may not hold true over all (or in fact most) scenarios in the W-200 system. Engineering proposes restriction on requested firmware files and manifests as a new default configuration, which will nessecitate backend checks on these styles of requests. To propertly support the rest of the edge cases listed above, the gateway backend should support allowing legacy retrievals that have access to a broader set of resources through some overarching access setting. This setting can be individually applied to gateways, or more appropriately perhaps, set to a fleet of gateways to support a collection of gateways on trusted manufacturing or provisioning workflows (and not the general patient population)
 
 
 ### Finding ID: CF-05
@@ -193,11 +206,9 @@ Source review artifact(s):
 - `09_firmware_manifest_file_delivery_ota_review.md`
 
 ### Finding ID: CF-05 Engineer review
-Engineering agrees the OTA flow should store a firmware hash at record-creation time and use it to detect later modification of registered binaries. Engineering also notes that device-side signature checks already exist, but do not prevent substitution of one valid signed package with another, and recommends optional backend verification of the firmware package signature at registration time.
-Status: Accepted
-Action owner: engineering
-Next step: Persist a firmware digest at registration and verify the downloaded binary against that digest before caching and serving it.
+This finding proposes an enhancement of the firmware file retrieval flow, for integrity checking and authentication purposes. Should this enhancement not be introduced, then firmware update files that have been previously registered at selected endpoints may undergo modification without proper detection. While firmware packages are digitally signed and checked prior to deployment by the edge-device, this doesnt  prevent one genuine firmware package from being replaced by another genuine, but different, firmware package. Engineering agreed with the finding and proposes saving a hash at the time of firmware record creation, to ensure endpoint binaries are not modified at a later time. 
 
+Additionally, firmware update packets are signed through IAR public keys and as such, can be verified as genuine by the backend server at the time of registration. This may also be an enhancement to prevent possible user error when registering firmware packages. This is also a recommended change.
 
 ### Finding ID: CF-06
 Title: GitHub OTA retrieval path appears inconsistent with the metadata stored for GitHub firmware
@@ -228,10 +239,10 @@ Source review artifact(s):
 - `09_firmware_manifest_file_delivery_ota_review.md`
 
 ### Finding ID: CF-06 Engineer review
-Engineering disputes the interpretation that the GitHub release asset ID must be stored for later retrieval. The engineer states the download-path `id` refers to the backend firmware-record ID rather than the GitHub asset ID and notes that GitHub and GLG retrieval paths are exercised in the separate `walkasins-gateway-server-smoketests` repository.
-Status: Needs follow-up
-Action owner: security
-Next step: Reconcile the reviewed code path with the implemented GitHub retrieval mechanism and the existing smoke-test evidence.
+This finding is outlining a mismatch between retrieved data from checkFirmwareExists, and subsequent access functions. The highlighted asset.ID field returned from the service is not a required
+field when downloading uploaded artifacts from the GH API, so it is not saved. In the download path for GH files, the download pathways "ID" is the backend server DB ID assigned to this firmware record, it is not the same ID as the origional asset.ID identified. 
+
+The recommendation for adding tests for Github and GLG firmware updates exist in smoke tests, where gateway devices repeatedly connecte and download firmware files from both GLG and GH endpoints to ensure download pathways are up and functional (https://github.com/RxFunction/walkasins-gateway-server-smoketests)
 
 ## Uncertain concerns requiring manual validation
 
@@ -252,9 +263,9 @@ What must be validated manually:
 Source review artifact(s):
 - `06_initial_architecture_attack_surface_analysis.md`
 - `07_authorization_access_control_review.md`
-Engineering response summary:
-- Engineering considers this concern addressed by the same upstream authentication and header-overwrite flow described in `CF-01`.
-- That response still depends on validation of the external NGINX, `oauth2-proxy`, Redis session, and cluster trust assumptions because they are outside this repository.
+
+### Concern ID: UC-01 Engineer review
+Addressed in "Finding ID: CF-01 Engineer review" topic
 
 ### Concern ID: UC-02
 Title: Production seeding may prevent exposure of the first-user-admin bootstrap path
@@ -273,9 +284,9 @@ What must be validated manually:
 Source review artifact(s):
 - `06_initial_architecture_attack_surface_analysis.md`
 - `07_authorization_access_control_review.md`
-Engineering response summary:
-- Engineering considers this concern addressed by the same acknowledgement and remediation direction captured in `CF-02`.
-- The remaining question is operational: whether production seeding and reset procedures prevent accidental re-entry into the bootstrap condition.
+
+### Concern ID: UC-02 Engineer review
+Addressed in "Finding ID: CF-02 Engineer review" topic
 
 ### Concern ID: UC-03
 Title: Effective publisher set for trusted inbound device messages depends on AWS IoT policy outside the repository
@@ -296,9 +307,9 @@ What must be validated manually:
 Source review artifact(s):
 - `06_initial_architecture_attack_surface_analysis.md`
 - `08_inbound_device_message_trust_boundary_review.md`
-Engineering response summary:
-- Engineering states AWS IoT Core policies, thing registration, and AWS Rules are intended to constrain which clients can publish device traffic and to overwrite gateway identity with AWS-derived values before backend processing.
-- This response supports the existence of an external control, but the effective publisher set still requires manual validation against live AWS configuration.
+
+### Concern ID: UC-03 Engineer review
+Addressed in "Finding ID: CF-04 Engineer review" topic
 
 ### Concern ID: UC-04
 Title: Device-side firmware verification may exist outside the reviewed backend
@@ -318,9 +329,9 @@ What must be validated manually:
 - Whether backend and device controls are designed to operate together
 Source review artifact(s):
 - `09_firmware_manifest_file_delivery_ota_review.md`
-Engineering response summary:
-- Engineering states the device verifies signed firmware before installation.
-- Engineering also recommends adding a backend-side hash or signature verification step, which would complement rather than replace device-side validation.
+
+### Concern ID: UC-04 Engineer review
+Addressed in "Finding ID: CF-05 Engineer review" topic
 
 ### Concern ID: UC-05
 Title: The downstream impact of arbitrary metric fields cannot be determined from this repository alone
@@ -341,9 +352,9 @@ What must be validated manually:
 - Whether additional validation or schema constraints are needed for production consumers
 Source review artifact(s):
 - `08_inbound_device_message_trust_boundary_review.md`
-Engineering response summary:
-- Engineering confirms the metrics area is still work in progress and that downstream field definitions are not finalized.
-- No immediate action is proposed, but engineering expects a follow-up review once the schema and consuming workflows are more defined.
+
+### Concern ID: UC-05 Engineer review
+Metric fields are not determined at this time, and as such these areas are WIP and will be defined at a later time. When they are, proper input sanitation and leveraging existing security controls will be essential to prevent possible security issues.  No action at this time, queued for follow up review at a later time.
 
 ## Reviewed areas with no confirmed issue identified
 
